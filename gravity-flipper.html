@@ -31,7 +31,8 @@ const TUNNEL_TOP    = 80;
 const TUNNEL_BOTTOM = H - 80;
 const TUNNEL_H      = TUNNEL_BOTTOM - TUNNEL_TOP;
 const PLAYER_X      = 100;
-const BASE_SPEED    = 220;
+const BASE_SPEED    = 140;
+const MAX_SPEED     = 480;
 const GRAVITY_FORCE = 1800;
 const PARTICLE_COUNT = 18;
 
@@ -216,7 +217,7 @@ class GameScene extends Phaser.Scene {
     this.elapsed = 0;
     this.distTraveled = 0;
     this.flipCooldown = 0;
-    this.nextObstacleX = W + 200;
+    this.nextObstacleX = W + 600;
     this.obstaclePool = [];
     this.cameraShake = 0;
 
@@ -324,24 +325,47 @@ class GameScene extends Phaser.Scene {
 
   // ── Obstacle spawning ──────────────────────────────────────────────────────
   spawnObstacle(x) {
-    const difficulty = clamp(this.elapsed / 30, 0, 1);
+    // difficulty: 0 at start, 1 at 90s
+    const difficulty = clamp(this.elapsed / 90, 0, 1);
     const rand = Math.random();
 
-    if (rand < 0.35) {
-      this.spawnSpikeRow(x, difficulty);
-    } else if (rand < 0.65) {
-      this.spawnBarrier(x, difficulty);
-    } else if (rand < 0.82) {
-      this.spawnMovingBlock(x, difficulty);
-    } else {
-      this.spawnGauntlet(x, difficulty);
+    // Early game (0–20s): only single spikes or wide barriers
+    if (this.elapsed < 20) {
+      if (rand < 0.5) this.spawnSpikeRow(x, difficulty);
+      else            this.spawnBarrier(x, difficulty);
+      return;
     }
+
+    // Mid-early (20–40s): add moving blocks
+    if (this.elapsed < 40) {
+      if (rand < 0.40) this.spawnSpikeRow(x, difficulty);
+      else if (rand < 0.75) this.spawnBarrier(x, difficulty);
+      else this.spawnMovingBlock(x, difficulty);
+      return;
+    }
+
+    // Mid (40–60s): fuller mix, still no gauntlets
+    if (this.elapsed < 60) {
+      if (rand < 0.35) this.spawnSpikeRow(x, difficulty);
+      else if (rand < 0.65) this.spawnBarrier(x, difficulty);
+      else this.spawnMovingBlock(x, difficulty);
+      return;
+    }
+
+    // Hard (60s+): full mix including gauntlets
+    if (rand < 0.30) this.spawnSpikeRow(x, difficulty);
+    else if (rand < 0.55) this.spawnBarrier(x, difficulty);
+    else if (rand < 0.78) this.spawnMovingBlock(x, difficulty);
+    else this.spawnGauntlet(x, difficulty);
   }
 
   spawnSpikeRow(x, difficulty) {
-    // Spikes on top or bottom wall (or both at higher difficulty)
-    const numTop = Math.floor(Phaser.Math.Between(1, 2 + Math.floor(difficulty * 3)));
-    const numBot = difficulty > 0.4 ? Math.floor(Phaser.Math.Between(0, 2 + Math.floor(difficulty * 2))) : 0;
+    // 0–15s: always 1 spike; 15–45s: up to 2; 45s+: up to 5
+    const maxTop = this.elapsed < 15 ? 1 : this.elapsed < 45 ? 2 : 2 + Math.floor(difficulty * 3);
+    const numTop = Phaser.Math.Between(1, maxTop);
+    // Bottom spikes only after 30s
+    const maxBot = this.elapsed < 30 ? 0 : this.elapsed < 50 ? 1 : Math.floor(difficulty * 2);
+    const numBot = maxBot > 0 ? Phaser.Math.Between(0, maxBot) : 0;
     const spacing = 18;
 
     for (let i = 0; i < numTop; i++) {
@@ -357,18 +381,16 @@ class GameScene extends Phaser.Scene {
   }
 
   spawnBarrier(x, difficulty) {
-    // Full-height barrier with a gap
-    const gapH = lerp(160, 90, difficulty);
+    // Gap shrinks from 240px (easy) down to 90px (hard)
+    const gapH = lerp(240, 90, difficulty);
     const gapY = Phaser.Math.Between(TUNNEL_TOP + 20, TUNNEL_BOTTOM - gapH - 20);
     const blockH = 24;
 
-    // Top section of barrier
     for (let y = TUNNEL_TOP; y < gapY; y += blockH) {
       const b = this.add.image(x, y + blockH / 2, 'block').setDepth(6);
       b.obstacleType = 'barrier';
       this.obstacles.add(b);
     }
-    // Bottom section
     for (let y = gapY + gapH; y < TUNNEL_BOTTOM; y += blockH) {
       const b = this.add.image(x, y + blockH / 2, 'block').setDepth(6);
       b.obstacleType = 'barrier';
@@ -379,14 +401,13 @@ class GameScene extends Phaser.Scene {
   spawnMovingBlock(x, difficulty) {
     const b = this.add.image(x, H / 2, 'block').setScale(1.5).setDepth(6);
     b.obstacleType = 'moving';
-    b.moveSpeed = lerp(60, 180, difficulty) * (Math.random() > 0.5 ? 1 : -1);
+    b.moveSpeed = lerp(40, 180, difficulty) * (Math.random() > 0.5 ? 1 : -1);
     b.minY = TUNNEL_TOP + 20;
     b.maxY = TUNNEL_BOTTOM - 20;
     this.obstacles.add(b);
   }
 
   spawnGauntlet(x, difficulty) {
-    // Series of spikes + a barrier close together
     this.spawnSpikeRow(x, difficulty);
     this.spawnBarrier(x + 80, difficulty);
   }
@@ -449,8 +470,10 @@ class GameScene extends Phaser.Scene {
     this.elapsed += dt;
     this.flipCooldown = Math.max(0, this.flipCooldown - dt);
 
-    // Speed progression
-    this.speed = BASE_SPEED + Math.min(this.elapsed * 8, 260);
+    // Speed progression: slow ramp over 90s
+    // 0s=140, 30s=~210, 60s=~340, 90s=480
+    const speedT = clamp(this.elapsed / 90, 0, 1);
+    this.speed = lerp(BASE_SPEED, MAX_SPEED, speedT * speedT);
 
     // Distance / score
     this.distTraveled += this.speed * dt;
@@ -511,12 +534,13 @@ class GameScene extends Phaser.Scene {
       if (obs.x < -60) this.obstacles.remove(obs, true, true);
     });
 
-    // Spawn new obstacles
+    // Spawn new obstacles — gap shrinks from 600px to 160px over 90s
     const spawnThresh = this.distTraveled + W + 150;
     if (spawnThresh > this.nextObstacleX) {
-      const gap = lerp(320, 160, clamp(this.elapsed / 45, 0, 1));
+      const gapT = clamp(this.elapsed / 90, 0, 1);
+      const gap = lerp(600, 160, gapT * gapT);
       this.spawnObstacle(this.nextObstacleX - this.distTraveled + W);
-      this.nextObstacleX += Phaser.Math.Between(gap * 0.8, gap * 1.3);
+      this.nextObstacleX += Phaser.Math.Between(gap * 0.85, gap * 1.2);
     }
 
     // Particles
@@ -562,7 +586,7 @@ class GameScene extends Phaser.Scene {
   updateSpeedBar() {
     const g = this.speedBar;
     g.clear();
-    const t = clamp((this.speed - BASE_SPEED) / 260, 0, 1);
+    const t = clamp((this.speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED), 0, 1);
     const barW = Math.floor(t * (W - 20));
     if (barW < 2) return;
     const col = Phaser.Display.Color.Interpolate.ColorWithColor(
