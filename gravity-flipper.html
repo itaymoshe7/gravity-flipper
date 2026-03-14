@@ -30,14 +30,14 @@ const GRAVITY_FORCE = 1900;
 // spacing  = px between obstacle clusters
 // hints shown on intro screen
 const LEVELS = [
-  { distance:2600, startSpeed:260, endSpeed:285, gap:200, spacing:430, types:['barrier'],                            coins:5,  hint:'FLIP GRAVITY TO DODGE' },
-  { distance:3000, startSpeed:295, endSpeed:328, gap:178, spacing:370, types:['spike','barrier'],                    coins:7,  hint:'WATCH THE SPIKES'       },
-  { distance:3300, startSpeed:335, endSpeed:372, gap:158, spacing:318, types:['spike','barrier'],                    coins:7,  hint:'SPEED INCREASING'       },
-  { distance:3600, startSpeed:378, endSpeed:416, gap:140, spacing:272, types:['spike','barrier','moving'],           coins:9,  hint:'OBSTACLES NOW MOVE'     },
-  { distance:3900, startSpeed:420, endSpeed:458, gap:123, spacing:235, types:['spike','barrier','moving'],           coins:9,  hint:'STAY FOCUSED'           },
-  { distance:4200, startSpeed:462, endSpeed:498, gap:108, spacing:203, types:['spike','barrier','moving','gauntlet'],coins:11, hint:'GAUNTLET MODE'          },
-  { distance:4600, startSpeed:502, endSpeed:536, gap:95,  spacing:178, types:['spike','barrier','moving','gauntlet'],coins:11, hint:'ALMOST THERE'           },
-  { distance:5000, startSpeed:540, endSpeed:572, gap:84,  spacing:156, types:['spike','barrier','moving','gauntlet'],coins:13, hint:'MAXIMUM INTENSITY'      },
+  { distance:2600, startSpeed:260, endSpeed:285, gap:200, spacing:430, types:['barrier'],                            coins:7,  required:3, hint:'FLIP GRAVITY TO DODGE' },
+  { distance:3000, startSpeed:295, endSpeed:328, gap:178, spacing:370, types:['spike','barrier'],                    coins:9,  required:4, hint:'WATCH THE SPIKES'       },
+  { distance:3300, startSpeed:335, endSpeed:372, gap:158, spacing:318, types:['spike','barrier'],                    coins:9,  required:5, hint:'SPEED INCREASING'       },
+  { distance:3600, startSpeed:378, endSpeed:416, gap:140, spacing:272, types:['spike','barrier','moving'],           coins:11, required:6, hint:'OBSTACLES NOW MOVE'     },
+  { distance:3900, startSpeed:420, endSpeed:458, gap:123, spacing:235, types:['spike','barrier','moving'],           coins:11, required:7, hint:'STAY FOCUSED'           },
+  { distance:4200, startSpeed:462, endSpeed:498, gap:108, spacing:203, types:['spike','barrier','moving','gauntlet'],coins:13, required:8, hint:'GAUNTLET MODE'          },
+  { distance:4600, startSpeed:502, endSpeed:536, gap:95,  spacing:178, types:['spike','barrier','moving','gauntlet'],coins:13, required:9, hint:'ALMOST THERE'           },
+  { distance:5000, startSpeed:540, endSpeed:572, gap:84,  spacing:156, types:['spike','barrier','moving','gauntlet'],coins:15, required:10,hint:'MAXIMUM INTENSITY'      },
 ];
 function getLevel(n){ return LEVELS[Math.min(n,LEVELS.length-1)]; }
 
@@ -233,45 +233,93 @@ class GameScene extends Phaser.Scene {
 
   // ── Finish line ────────────────────────────────────────────────────────────
   buildFinishLine(){
-    // Container for the finish line visual
-    this.finishGfx = this.add.graphics().setDepth(8);
-    this.finishTxt = this.add.text(0, TUNNEL_TOP-22,'FINISH',{
+    this.finishGfx   = this.add.graphics().setDepth(8);
+    this.finishTxt   = this.add.text(0, TUNNEL_TOP-22,'FINISH',{
       fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'
     }).setOrigin(0.5,1).setDepth(9);
-    this.finishGlow = 0;
-    this.finishPulse = 0;
+    this.finishPulse      = 0;
+    this.blockedCooldown  = 0;   // seconds before player can be bounced again
+    this.safetyCoinsSpawned = false;
+
+    // "COLLECT MORE COINS!" message — hidden until needed
+    this.blockMsg = this.add.text(W/2, H/2 - 60,'COLLECT MORE COINS!',{
+      fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#ff4444',
+      shadow:{x:2,y:2,color:'#880000',blur:0,fill:true}
+    }).setOrigin(0.5).setDepth(25).setAlpha(0);
   }
 
   updateFinishLine(){
-    // screenX of finish line
     const sx = PLAYER_X + (this.lvl.distance - this.distTraveled);
     this.finishTxt.x = sx;
 
-    const g = this.finishGfx;
-    g.clear();
+    // Fade blockMsg
+    if(this.blockMsg.alpha > 0) this.blockMsg.setAlpha(Math.max(0, this.blockMsg.alpha - 0.03));
+    if(this.blockedCooldown > 0) this.blockedCooldown -= 1/60;
 
-    // Only draw when on-screen
+    // Spawn safety coins in final clear stretch (last 350px before finish)
+    if(!this.safetyCoinsSpawned && this.distTraveled > this.lvl.distance - 600){
+      this.safetyCoinsSpawned = true;
+      this.spawnSafetyCoins();
+    }
+
+    const g = this.finishGfx; g.clear();
     if(sx < -20 || sx > W+20) return;
 
+    const locked = this.coinsCollected < this.lvl.required;
     this.finishPulse = (this.finishPulse + 0.08) % (Math.PI*2);
-    const glow = 0.6 + Math.sin(this.finishPulse)*0.4;
+    const pulse = 0.6 + Math.sin(this.finishPulse)*0.4;
 
-    // Checkered pattern columns
+    // Colour: red = locked, green→yellow = unlocked
+    const lineCol  = locked ? 0xff3333 : 0xffff00;
+    const checkCol = locked ? 0xff6666 : 0xffffff;
+    const altCol   = locked ? 0xaa0000 : 0xffff00;
+
     const sqH = 18;
     for(let y=TUNNEL_TOP; y<TUNNEL_BOTTOM; y+=sqH){
       const dark = (Math.floor((y-TUNNEL_TOP)/sqH)%2)===0;
-      g.fillStyle(dark?0xffffff:0xffff00, glow*0.9);
+      g.fillStyle(dark ? checkCol : altCol, pulse*0.9);
       g.fillRect(sx-5, y, 10, sqH);
     }
-    // Bright centre line
-    g.lineStyle(3, 0xffffff, glow);
+    g.lineStyle(3, lineCol, pulse);
     g.beginPath(); g.moveTo(sx,TUNNEL_TOP); g.lineTo(sx,TUNNEL_BOTTOM); g.strokePath();
-    // Glow halo
-    g.lineStyle(14, 0xffff00, glow*0.2);
+    g.lineStyle(16, lineCol, pulse*0.18);
     g.beginPath(); g.moveTo(sx,TUNNEL_TOP); g.lineTo(sx,TUNNEL_BOTTOM); g.strokePath();
 
-    // Check crossing
-    if(sx <= PLAYER_X && !this.levelDone){ this.completeLEVEL(); }
+    // Player reaches finish line
+    if(sx <= PLAYER_X + 8 && !this.levelDone){
+      if(locked){
+        // Block: bounce player back and flash message
+        if(this.blockedCooldown <= 0){
+          this.blockedCooldown = 0.4;
+          this.vy = -this.vy * 0.7;                    // reverse vertical velocity
+          this.distTraveled -= 18;                     // nudge back slightly
+          this.cameras.main.flash(120, 255, 0, 0, false);
+          this.blockMsg.setAlpha(1);
+          // Shake coin counter
+          this.tweens.add({targets:this.coinTxt, x:this.coinTxt.x+5, duration:40, yoyo:true, repeat:4,
+            onComplete:()=>this.coinTxt.setX(10)});
+          // Emit red sparks off the finish line
+          this.emitParticles(sx, this.player.y, [0xff3333,0xff8888,0xffffff], 10, 40, 120);
+        }
+      } else {
+        this.completeLEVEL();
+      }
+    }
+  }
+
+  // Place a handful of coins in the clear zone just before the finish line
+  spawnSafetyCoins(){
+    const needed = this.lvl.required - this.coinsCollected;
+    // Always place 3 safety coins regardless, so player has them if needed
+    const positions = [
+      { wx: this.lvl.distance - 340, sy: H/2 },
+      { wx: this.lvl.distance - 240, sy: TUNNEL_TOP + 50 },
+      { wx: this.lvl.distance - 140, sy: TUNNEL_BOTTOM - 50 },
+    ];
+    for(const pos of positions){
+      const sx = this.worldToScreen(pos.wx);
+      this.placeCoin(sx, pos.sy, pos.wx);
+    }
   }
 
   // ── UI ─────────────────────────────────────────────────────────────────────
@@ -280,7 +328,7 @@ class GameScene extends Phaser.Scene {
     this.scoreTxt=this.add.text(10,10,'0',{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#00ffff'}).setDepth(20);
     this.bestTxt =this.add.text(W-10,10,`BEST ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(1,0).setDepth(20);
     this.levelTxt=this.add.text(W/2,10,`LVL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ff88ff'}).setOrigin(0.5,0).setDepth(20);
-    this.coinTxt =this.add.text(10,30,`\u25c6 0`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffdd00'}).setDepth(20);
+    this.coinTxt =this.add.text(10,30,`\u25c6 0/${this.lvl.required}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffdd00'}).setDepth(20);
     this.progGfx =this.add.graphics().setDepth(20);
   }
 
@@ -302,7 +350,7 @@ class GameScene extends Phaser.Scene {
     const hintTxt=this.add.text(cx,H*0.46,this.lvl.hint,{
       fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#00ffff'
     }).setOrigin(0.5);
-    const coinHint=this.add.text(cx,H*0.54,`${this.lvl.coins} COINS TO COLLECT`,{
+    const coinHint=this.add.text(cx,H*0.54,`COLLECT ${this.lvl.required} COINS TO FINISH`,{
       fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ffdd00'
     }).setOrigin(0.5);
     const tapHint=this.add.text(cx,H*0.65,'TAP TO START!',{
@@ -541,9 +589,17 @@ class GameScene extends Phaser.Scene {
   collectCoin(c){
     this.coinsCollected++;
     this.levelScore+=100;
-    this.coinTxt.setText(`\u25c6 ${this.coinsCollected}`);
+    const req = this.lvl.required;
+    const met = this.coinsCollected >= req;
+    this.coinTxt.setText(`\u25c6 ${this.coinsCollected}/${req}`);
+    this.coinTxt.setColor(met ? '#00ff88' : '#ffdd00');
     this.emitParticles(c.x,c.y,[0xffdd00,0xffee66,0xffffff],14,70,150);
     this.tweens.add({targets:this.coinTxt,scaleX:1.5,scaleY:1.5,duration:90,yoyo:true});
+    // If this coin just met the requirement, flash green
+    if(met && this.coinsCollected === req){
+      this.cameras.main.flash(120, 0, 255, 100, false);
+      this.blockMsg.setText('FINISH LINE UNLOCKED!').setColor('#00ff88').setAlpha(1);
+    }
     this.coins.remove(c,true,true);
   }
 
@@ -590,12 +646,13 @@ class GameScene extends Phaser.Scene {
 
     this.time.delayedCall(900,()=>{
       this.scene.start('LevelComplete',{
-        levelIndex:this.levelIndex,
+        levelIndex:    this.levelIndex,
         coinsCollected:this.coinsCollected,
-        totalCoins:this.lvl.coins,
-        levelScore:this.levelScore,
-        totalScore:finalScore,
-        isLastLevel:this.levelIndex>=LEVELS.length-1
+        totalCoins:    this.lvl.coins,
+        requiredCoins: this.lvl.required,
+        levelScore:    this.levelScore,
+        totalScore:    finalScore,
+        isLastLevel:   this.levelIndex>=LEVELS.length-1
       });
     });
   }
@@ -630,9 +687,10 @@ class GameScene extends Phaser.Scene {
 class LevelCompleteScene extends Phaser.Scene {
   constructor(){ super('LevelComplete'); }
   init(d){
-    this.levelIndex=d.levelIndex; this.coinsCollected=d.coinsCollected;
-    this.totalCoins=d.totalCoins; this.levelScore=d.levelScore;
-    this.totalScore=d.totalScore; this.isLastLevel=d.isLastLevel;
+    this.levelIndex    =d.levelIndex;    this.coinsCollected=d.coinsCollected;
+    this.totalCoins    =d.totalCoins;    this.requiredCoins =d.requiredCoins;
+    this.levelScore    =d.levelScore;    this.totalScore    =d.totalScore;
+    this.isLastLevel   =d.isLastLevel;
   }
   create(){
     this.cameras.main.setBackgroundColor('#000011');
@@ -655,8 +713,8 @@ class LevelCompleteScene extends Phaser.Scene {
     cont.add(this.add.text(cx,H*0.35,'LEVEL SCORE',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5));
     cont.add(this.add.text(cx,H*0.41,`${this.levelScore}`,{fontFamily:'"Press Start 2P"',fontSize:'24px',color:'#00ffff'}).setOrigin(0.5));
 
-    cont.add(this.add.text(cx,H*0.50,`\u25c6 COINS  ${this.coinsCollected} / ${this.totalCoins}`,{
-      fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffdd00'
+    cont.add(this.add.text(cx,H*0.50,`\u25c6 COINS  ${this.coinsCollected} / ${this.requiredCoins} REQ`,{
+      fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffdd00'
     }).setOrigin(0.5));
 
     const coinBonus=this.coinsCollected*100;
