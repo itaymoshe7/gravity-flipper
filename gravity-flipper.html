@@ -482,13 +482,19 @@ class GameScene extends Phaser.Scene{
     this.introCont.add([bg,numTxt,themeTxt,hintTxt,coinHint,tapHint]);
     this.time.addEvent({delay:500,loop:true,callback:()=>tapHint.setVisible(!tapHint.visible)});
 
+    let _cdCleanup=()=>{};
     const startCountdown=()=>{
       if(this._countingDown) return;
       this._countingDown=true;
+      _cdCleanup();
       this.tweens.add({targets:this.introCont,alpha:0,duration:250,onComplete:()=>this.introCont.destroy()});
       this._runCountdown();
     };
-    this.input.once('pointerdown',startCountdown);
+    const onT=(e)=>{e.preventDefault();startCountdown();};
+    document.addEventListener('touchstart',onT,{passive:false});
+    document.addEventListener('click',startCountdown);
+    _cdCleanup=()=>{document.removeEventListener('touchstart',onT);document.removeEventListener('click',startCountdown);};
+    this.events.once('shutdown',_cdCleanup);
     if(this.input.keyboard)this.input.keyboard.once('keydown',startCountdown);
     this.time.delayedCall(4000,startCountdown);
   }
@@ -867,8 +873,14 @@ class LevelCompleteScene extends Phaser.Scene{
       this.tweens.add({targets:p,y:p.y+Phaser.Math.Between(25,70),alpha:0,duration:900,onComplete:()=>p.destroy()});
     });
     this.time.delayedCall(700,()=>{
-      const next=()=>{AUDIO.stopMusic();const ni=this.isLastLevel?0:this.levelIndex+1,ns=this.isLastLevel?0:this.totalScore;this.scene.start('Game',{levelIndex:ni,totalScore:ns});};
-      this.input.once('pointerdown',next);if(this.input.keyboard)this.input.keyboard.once('keydown',next);
+      let going=false;let cleanup=()=>{};
+      const next=()=>{if(going)return;going=true;cleanup();AUDIO.stopMusic();const ni=this.isLastLevel?0:this.levelIndex+1,ns=this.isLastLevel?0:this.totalScore;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:ni,totalScore:ns}));};
+      const onT=(e)=>{e.preventDefault();next();};
+      document.addEventListener('touchstart',onT,{passive:false});
+      document.addEventListener('click',next);
+      cleanup=()=>{document.removeEventListener('touchstart',onT);document.removeEventListener('click',next);};
+      this.events.once('shutdown',cleanup);
+      if(this.input.keyboard){this.input.keyboard.once('keydown-SPACE',next);this.input.keyboard.once('keydown-ENTER',next);}
     });
   }
 }
@@ -903,13 +915,14 @@ class LevelFailedScene extends Phaser.Scene{
     this.time.addEvent({delay:550,loop:true,callback:()=>tryBtn.setVisible(!tryBtn.visible)});
     this.add.text(cx,H*0.91,'level score is lost',{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#333333'}).setOrigin(0.5).setDepth(20);
     this.time.delayedCall(600,()=>{
-      let going=false;
-      const go=()=>{if(going)return;going=true;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));};
-      this.add.rectangle(W/2,H/2,W,H,0x000000,0).setInteractive({useHandCursor:false}).setDepth(100).on('pointerdown',go);
-      if(this.input.keyboard){
-        this.input.keyboard.on('keydown-SPACE',go);
-        this.input.keyboard.on('keydown-ENTER',go);
-      }
+      let going=false;let cleanup=()=>{};
+      const go=()=>{if(going)return;going=true;cleanup();this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));};
+      const onT=(e)=>{e.preventDefault();go();};
+      document.addEventListener('touchstart',onT,{passive:false});
+      document.addEventListener('click',go);
+      cleanup=()=>{document.removeEventListener('touchstart',onT);document.removeEventListener('click',go);};
+      this.events.once('shutdown',cleanup);
+      if(this.input.keyboard){this.input.keyboard.on('keydown-SPACE',go);this.input.keyboard.on('keydown-ENTER',go);}
     });
   }
 }
@@ -941,14 +954,18 @@ class DeathScene extends Phaser.Scene{
     const dg=this.add.graphics();dg.lineStyle(1,0x333333,1);dg.beginPath();dg.moveTo(20,H*0.74);dg.lineTo(W-20,H*0.74);dg.strokePath();
     const retryTxt=this.add.text(cx,H*0.79,`\u25b6 RETRY LEVEL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffffff'}).setOrigin(0.5);
     this.add.text(cx,H*0.87,'\u25b6 RESTART FROM LVL 1',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#666666'}).setOrigin(0.5);
-    this.add.text(cx,H*0.93,'(tap lower half)',{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#333333'}).setOrigin(0.5);
+    this.add.text(cx,H*0.93,'bottom half = restart from lvl 1',{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#333333'}).setOrigin(0.5);
     this.time.addEvent({delay:580,loop:true,callback:()=>retryTxt.setVisible(!retryTxt.visible)});
     this.time.delayedCall(600,()=>{
-      let going=false;
-      const go=(lvlIdx)=>{if(going)return;going=true;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:lvlIdx,totalScore:0}));};
-      // Full-screen tap zone so anywhere on screen works
-      this.add.rectangle(W/2,H/2,W,H,0x000000,0).setInteractive({useHandCursor:false}).setDepth(100)
-        .on('pointerdown',(ptr)=>go(ptr.y<H*0.84?this.levelIndex:0));
+      let going=false;let cleanup=()=>{};
+      const go=(lvlIdx)=>{if(going)return;going=true;cleanup();this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:lvlIdx,totalScore:0}));};
+      const getGameY=(clientY)=>{const cv=this.sys.game.canvas,r=cv.getBoundingClientRect();return((clientY-r.top)/r.height)*H;};
+      const onT=(e)=>{e.preventDefault();const y=getGameY(e.touches[0].clientY);go(y<H*0.84?this.levelIndex:0);};
+      const onC=(e)=>{const y=getGameY(e.clientY);go(y<H*0.84?this.levelIndex:0);};
+      document.addEventListener('touchstart',onT,{passive:false});
+      document.addEventListener('click',onC);
+      cleanup=()=>{document.removeEventListener('touchstart',onT);document.removeEventListener('click',onC);};
+      this.events.once('shutdown',cleanup);
       if(this.input.keyboard){
         this.input.keyboard.on('keydown-SPACE',()=>go(this.levelIndex));
         this.input.keyboard.on('keydown-ENTER',()=>go(this.levelIndex));
