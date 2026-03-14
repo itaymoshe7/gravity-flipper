@@ -9,7 +9,33 @@
   *{margin:0;padding:0;box-sizing:border-box;}
   body{background:#000;display:flex;justify-content:center;align-items:center;
        width:100vw;height:100vh;overflow:hidden;touch-action:none;}
-  canvas{display:block;image-rendering:pixelated;}
+  canvas{display:block;image-rendering:pixelated;touch-action:manipulation;}
+  /* ── Overlay system ─────────────────────────────────────────────────────── */
+  .ov{position:fixed;top:0;left:0;width:100%;height:100%;z-index:200;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      font-family:"Press Start 2P",monospace;box-sizing:border-box;padding:12px;
+      overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .ov-wrap{width:min(400px,96vw);text-align:center;}
+  .ov-title{font-size:clamp(22px,7vw,36px);line-height:1.35;margin-bottom:6px;}
+  .ov-sub{font-size:clamp(8px,2.4vw,12px);margin:4px 0;line-height:1.5;}
+  .ov-score{font-size:clamp(22px,7vw,32px);margin:4px 0;}
+  .ov-rule{width:100%;border:none;border-top:1px solid #333;margin:10px 0;}
+  .ov-btn{display:block;width:100%;min-height:54px;padding:14px 20px;margin:6px 0;
+          font-family:"Press Start 2P",monospace;font-size:clamp(11px,3.2vw,14px);
+          background:transparent;border:2px solid #fff;color:#fff;cursor:pointer;
+          touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+          user-select:none;letter-spacing:1px;box-sizing:border-box;}
+  .ov-btn:active{background:rgba(255,255,255,0.15);}
+  .ov-btn-sm{font-size:clamp(9px,2.5vw,11px);min-height:46px;border-color:#555;color:#888;}
+  /* character select grid */
+  .ch-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;}
+  .ch-btn{min-height:62px;padding:8px 4px;background:#111122;border:2px solid #334455;
+          color:#888;font-family:"Press Start 2P",monospace;font-size:8px;cursor:pointer;
+          touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+          display:flex;flex-direction:column;align-items:center;justify-content:center;
+          gap:4px;width:100%;box-sizing:border-box;}
+  .ch-btn.sel{background:#1a1a44;color:#fff;}
+  .ch-btn:active,.ch-btn.sel:active{background:#252566;}
 </style>
 </head>
 <body>
@@ -245,7 +271,7 @@ const INPUT=(function(){
     init(canvas){
       _cv=canvas;
       canvas.addEventListener('touchend',_onTouchEnd,{passive:false});
-      canvas.addEventListener('click',_onClick);
+      canvas.addEventListener('mousedown',_onClick); // desktop: faster than click
     },
     on(fn){_handlers.push({fn,once:false});},
     once(fn){_handlers.push({fn,once:true});},
@@ -253,6 +279,36 @@ const INPUT=(function(){
     clear(){_handlers=[];}
   };
 })();
+
+// ── OV — HTML overlay manager ─────────────────────────────────────────────────
+// Overlays are real DOM elements layered above the canvas; they receive all
+// pointer/touch events natively, bypassing Phaser entirely.
+const OV={
+  _el:null,
+  show(id,html,bg){
+    this.hide();
+    const d=document.createElement('div');
+    d.id=id; d.className='ov';
+    d.style.background=bg||'rgba(0,0,8,0.88)';
+    d.innerHTML=html;
+    document.body.appendChild(d);
+    this._el=d; return d;
+  },
+  hide(){if(this._el){this._el.remove();this._el=null;}}
+};
+
+// addTap — attach touchend+click to an element with double-fire guard.
+// touchend fires first; preventDefault() stops the 300ms synthetic click on iOS.
+function addTap(el,fn){
+  if(!el)return;
+  let last=0;
+  const go=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const n=Date.now(); if(n-last<600)return; last=n; fn();
+  };
+  el.addEventListener('touchend',go,{passive:false});
+  el.addEventListener('click',go);
+}
 
 // ── BootScene ─────────────────────────────────────────────────────────────────
 class BootScene extends Phaser.Scene{
@@ -340,79 +396,39 @@ class BootScene extends Phaser.Scene{
 class MenuScene extends Phaser.Scene{
   constructor(){super('Menu');}
   create(){
-    this.cameras.main.setBackgroundColor('#000011');
+    AUDIO.init();
     this._selIdx=CHARACTERS.findIndex(c=>c.id===(localStorage.getItem('gf_char')||'ship'));
     if(this._selIdx<0)this._selIdx=0;
-    this._buildStars();this._buildTunnel();this._buildUI();
-    this.time.addEvent({delay:600,loop:true,callback:()=>{if(this.tap)this.tap.setVisible(!this.tap.visible);}});
-  }
-
-  _buildStars(){
-    for(let i=0;i<80;i++){
-      const s=this.add.image(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),'star').setAlpha(Math.random()*0.8+0.2);
-      this.tweens.add({targets:s,alpha:0.1,duration:Phaser.Math.Between(800,2000),yoyo:true,repeat:-1});
-    }
-  }
-
-  _buildTunnel(){
-    const g=this.add.graphics();
-    g.fillStyle(0x001133);g.fillRect(0,0,W,TUNNEL_TOP);g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
-    g.lineStyle(3,0x0088ff,1);
-    g.beginPath();g.moveTo(0,TUNNEL_TOP);g.lineTo(W,TUNNEL_TOP);g.strokePath();
-    g.beginPath();g.moveTo(0,TUNNEL_BOTTOM);g.lineTo(W,TUNNEL_BOTTOM);g.strokePath();
-    g.lineStyle(10,0x0044ff,0.3);
-    g.beginPath();g.moveTo(0,TUNNEL_TOP);g.lineTo(W,TUNNEL_TOP);g.strokePath();
-    g.beginPath();g.moveTo(0,TUNNEL_BOTTOM);g.lineTo(W,TUNNEL_BOTTOM);g.strokePath();
-  }
-
-  _buildUI(){
-    const cx=W/2;
-    this.add.text(cx,H*0.06,'GRAVITY',{fontFamily:'"Press Start 2P"',fontSize:'34px',color:'#00ffff',shadow:{x:3,y:3,color:'#0044ff',blur:0,fill:true}}).setOrigin(0.5);
-    this.add.text(cx,H*0.15,'FLIPPER',{fontFamily:'"Press Start 2P"',fontSize:'34px',color:'#ff44ff',shadow:{x:3,y:3,color:'#880088',blur:0,fill:true}}).setOrigin(0.5);
-
-    // Character selection
-    this.add.text(cx,H*0.26,'CHOOSE YOUR SHIP',{fontFamily:'"Press Start 2P"',fontSize:'9px',color:'#888888'}).setOrigin(0.5);
-    this._charBoxes=[];
-    this._charSprites=[];
-    const boxW=96, boxH=72, startX=W/2-(boxW*2+8)/2+boxW/2;
-    CHARACTERS.forEach((ch,i)=>{
-      const bx=startX+(i%2)*(boxW+8), by=H*0.31+(Math.floor(i/2))*(boxH+6)+boxH/2;
-      const box=this.add.rectangle(bx,by,boxW,boxH,0x111122,0.9).setStrokeStyle(2,0x334455);
-      const sprite=this.add.image(bx,by-10,`char_${ch.id}`).setScale(3);
-      const nameTxt=this.add.text(bx,by+20,ch.name,{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#aaaaaa'}).setOrigin(0.5);
-      const descTxt=this.add.text(bx,by+30,ch.desc,{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#666666'}).setOrigin(0.5);
-      box.setInteractive().on('pointerdown',()=>this._selectChar(i));
-      this._charBoxes.push({box,nameTxt,sprite});
-    });
-    this._refreshCharSel();
-
-    const best=localStorage.getItem('gf_best')||0, reach=localStorage.getItem('gf_level')||1;
-    this.add.text(cx,H*0.65,`BEST: ${best} PTS`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(0.5);
-    this.add.text(cx,H*0.72,`REACHED LEVEL ${reach}`,{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5);
-    this.tap=this.add.text(cx,H*0.80,'TAP TO START',{fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffffff'}).setOrigin(0.5);
-    this.add.text(cx,H*0.89,'TAP = FLIP GRAVITY',{fontFamily:'"Press Start 2P"',fontSize:'9px',color:'#444444'}).setOrigin(0.5);
-
-    const startGame=()=>{AUDIO.init();AUDIO.resume();INPUT.clear();localStorage.setItem('gf_char',CHARACTERS[this._selIdx].id);this.scene.start('Game',{levelIndex:0,totalScore:0});};
-    INPUT.on((pos)=>{if(pos.y>H*0.26&&pos.y<H*0.60)return;startGame();});
-    this.events.once('shutdown',()=>INPUT.clear());
-    if(this.input.keyboard)this.input.keyboard.once('keydown',startGame);
-  }
-
-  _selectChar(i){
-    this._selIdx=i;
-    this._refreshCharSel();
-  }
-
-  _refreshCharSel(){
-    const ch=CHARACTERS[this._selIdx];
-    this._charBoxes.forEach(({box,nameTxt,sprite},i)=>{
+    const best=localStorage.getItem('gf_best')||0;
+    const reach=localStorage.getItem('gf_level')||1;
+    const charHTML=CHARACTERS.map((ch,i)=>{
+      const col='#'+ch.col.toString(16).padStart(6,'0');
       const sel=i===this._selIdx;
-      box.setStrokeStyle(sel?3:1,sel?CHARACTERS[i].col:0x334455);
-      box.setFillStyle(sel?0x1a1a44:0x111122,sel?0.95:0.9);
-      nameTxt.setColor(sel?'#ffffff':'#888888');
-      if(sel){
-        this.tweens.add({targets:sprite,scaleX:3.3,scaleY:3.3,duration:120,yoyo:true});
-      }
+      return `<button class="ch-btn${sel?' sel':''}" id="ch${i}" style="${sel?'border-color:'+col+';':''}">${ch.name}<br><span style="color:#666;font-size:7px">${ch.desc}</span></button>`;
+    }).join('');
+    OV.show('ov-menu',
+      `<div class="ov-wrap">
+        <div class="ov-title" style="color:#00ffff;text-shadow:3px 3px #0044ff">GRAVITY<br><span style="color:#ff44ff;text-shadow:3px 3px #880088">FLIPPER</span></div>
+        <div class="ov-sub" style="color:#888;margin-top:8px">CHOOSE YOUR SHIP</div>
+        <div class="ch-grid">${charHTML}</div>
+        <div class="ov-sub" style="color:#ffff00">BEST: ${best} PTS</div>
+        <div class="ov-sub" style="color:#888">REACHED LEVEL ${reach}</div>
+        <button class="ov-btn" id="ov-start" style="margin-top:14px;border-color:#00ffff;color:#00ffff">\u25b6 TAP TO START</button>
+        <div class="ov-sub" style="color:#444;margin-top:6px">TAP = FLIP GRAVITY</div>
+      </div>`,'rgba(0,0,10,0.96)');
+    CHARACTERS.forEach((_,i)=>addTap(document.getElementById('ch'+i),()=>this._selChar(i)));
+    const go=()=>{AUDIO.init();AUDIO.resume();OV.hide();localStorage.setItem('gf_char',CHARACTERS[this._selIdx].id);this.scene.start('Game',{levelIndex:0,totalScore:0});};
+    addTap(document.getElementById('ov-start'),go);
+    this.events.once('shutdown',()=>OV.hide());
+    if(this.input.keyboard)this.input.keyboard.once('keydown',go);
+  }
+  _selChar(i){
+    this._selIdx=i;
+    CHARACTERS.forEach((ch,j)=>{
+      const b=document.getElementById('ch'+j); if(!b)return;
+      const sel=j===i, col='#'+ch.col.toString(16).padStart(6,'0');
+      b.className='ch-btn'+(sel?' sel':'');
+      b.style.borderColor=sel?col:'#334455';
     });
   }
 }
@@ -510,60 +526,45 @@ class GameScene extends Phaser.Scene{
     }
   }
 
-  // ── Level intro + countdown ─────────────────────────────────────────────────
+  // ── Level intro + countdown (HTML overlay) ─────────────────────────────────
   _showIntro(){
-    const cx=W/2;
-    this.introCont=this.add.container(0,0).setDepth(30);
-    const bg=this.add.rectangle(cx,H/2,W,H,0x000000,0.78);
-    const numTxt=this.add.text(cx,H*0.30,`LEVEL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'40px',color:'#ffff00',shadow:{x:4,y:4,color:'#886600',blur:0,fill:true}}).setOrigin(0.5);
-    const themeTxt=this.add.text(cx,H*0.40,this.theme.name,{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#ff88ff'}).setOrigin(0.5);
-    const hintTxt=this.add.text(cx,H*0.48,this.lvl.hint,{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#00ffff'}).setOrigin(0.5);
-    const coinHint=this.add.text(cx,H*0.56,`COLLECT ${this.lvl.required} COINS TO FINISH`,{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ffdd00'}).setOrigin(0.5);
-    const tapHint=this.add.text(cx,H*0.67,'TAP TO START!',{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#ffffff'}).setOrigin(0.5);
-    this.introCont.add([bg,numTxt,themeTxt,hintTxt,coinHint,tapHint]);
-    this.time.addEvent({delay:500,loop:true,callback:()=>tapHint.setVisible(!tapHint.visible)});
-
-    const startCountdown=()=>{
-      if(this._countingDown) return;
-      this._countingDown=true;
-      INPUT.off(startCountdown);
-      this.tweens.add({targets:this.introCont,alpha:0,duration:250,onComplete:()=>this.introCont.destroy()});
-      this._runCountdown();
-    };
-    INPUT.once(()=>startCountdown());
-    if(this.input.keyboard)this.input.keyboard.once('keydown',startCountdown);
-    this.time.delayedCall(4000,startCountdown);
+    const t=this.theme, l=this.lvl;
+    OV.show('ov-intro',
+      `<div class="ov-wrap">
+        <div class="ov-sub" style="color:#888">LEVEL</div>
+        <div class="ov-title" style="color:#ffff00;text-shadow:4px 4px #886600;font-size:clamp(44px,14vw,64px)">${this.levelIndex+1}</div>
+        <div class="ov-sub" style="color:#ff88ff">${t.name}</div>
+        <div class="ov-sub" style="color:#00ffff;margin:10px 0">${l.hint}</div>
+        <div class="ov-sub" style="color:#ffdd00">COLLECT ${l.required} COINS TO FINISH</div>
+        <button class="ov-btn" id="ov-play" style="margin-top:22px;border-color:#ffff00;color:#ffff00">\u25b6 TAP TO START</button>
+      </div>`,'rgba(0,0,8,0.86)');
+    let started=false;
+    const go=()=>{if(started)return;started=true;OV.hide();this._runCountdown();};
+    addTap(document.getElementById('ov-play'),go);
+    if(this.input.keyboard)this.input.keyboard.once('keydown',go);
+    this.time.delayedCall(4000,go);
   }
 
   _runCountdown(){
-    const cx=W/2, cy=H/2;
-    const steps=['3','2','1','GO!'];
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;z-index:200;display:flex;align-items:center;justify-content:center;pointer-events:none;';
+    const num=document.createElement('div');
+    num.style.cssText='font-family:"Press Start 2P",monospace;font-size:clamp(80px,26vw,120px);color:#fff;text-align:center;will-change:transform,opacity;';
+    wrap.appendChild(num); document.body.appendChild(wrap);
+    const steps=['3','2','1','GO!'], cols=['#ffffff','#ffffff','#ffffff','#00ff88'];
     let idx=0;
-    const next=()=>{
-      if(idx>=steps.length){this.gameStarted=true; return;}
-      const isGo=(idx===3);
+    const tick=()=>{
+      if(idx>=steps.length){wrap.remove();this.gameStarted=true;return;}
+      const isGo=idx===3;
       AUDIO.countBeep(isGo);
-      const txt=this.add.text(cx,cy,steps[idx],{
-        fontFamily:'"Press Start 2P"',
-        fontSize:isGo?'56px':'76px',
-        color:isGo?'#00ff88':'#ffffff',
-        shadow:{x:isGo?4:6,y:isGo?4:6,color:isGo?'#005533':'#444444',blur:0,fill:true}
-      }).setOrigin(0.5).setDepth(32).setAlpha(0).setScale(2.2);
-
-      this.tweens.add({
-        targets:txt, alpha:1, scaleX:1, scaleY:1, duration:200,
-        ease:'Back.easeOut',
-        onComplete:()=>{
-          this.time.delayedCall(isGo?350:500,()=>{
-            this.tweens.add({
-              targets:txt, alpha:0, scaleX:0.6, scaleY:0.6, duration:180,
-              onComplete:()=>{txt.destroy(); idx++; next();}
-            });
-          });
-        }
-      });
+      num.textContent=steps[idx];
+      num.style.color=cols[idx];
+      num.style.fontSize=isGo?'clamp(58px,18vw,86px)':'clamp(80px,26vw,120px)';
+      num.style.opacity='1'; num.style.transform='scale(1.5)';
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{num.style.transition='transform 0.18s ease-out';num.style.transform='scale(1)';}));
+      setTimeout(()=>{num.style.opacity='0';setTimeout(()=>{num.style.transition='';idx++;tick();},200);},isGo?400:550);
     };
-    next();
+    tick();
   }
 
   // ── Gravity flip ───────────────────────────────────────────────────────────
@@ -875,44 +876,35 @@ class GameScene extends Phaser.Scene{
 // ── LevelCompleteScene ────────────────────────────────────────────────────────
 class LevelCompleteScene extends Phaser.Scene{
   constructor(){super('LevelComplete');}
-  init(d){this.levelIndex=d.levelIndex;this.coinsCollected=d.coinsCollected;this.totalCoins=d.totalCoins;this.requiredCoins=d.requiredCoins;this.levelScore=d.levelScore;this.totalScore=d.totalScore;this.isLastLevel=d.isLastLevel;}
+  init(d){this.levelIndex=d.levelIndex;this.coinsCollected=d.coinsCollected;this.requiredCoins=d.requiredCoins;this.levelScore=d.levelScore;this.totalScore=d.totalScore;this.isLastLevel=d.isLastLevel;}
   create(){
     AUDIO.init();AUDIO.resume();
-    const nextTheme=getTheme(this.isLastLevel?0:this.levelIndex+1);
-    this.cameras.main.setBackgroundColor(nextTheme.bg);
-    const cx=W/2;
-    const g=this.add.graphics();
-    g.fillStyle(nextTheme.wallFill);g.fillRect(0,0,W,TUNNEL_TOP);g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
-    g.lineStyle(3,nextTheme.wallLine,1);
-    g.beginPath();g.moveTo(0,TUNNEL_TOP);g.lineTo(W,TUNNEL_TOP);g.strokePath();
-    g.beginPath();g.moveTo(0,TUNNEL_BOTTOM);g.lineTo(W,TUNNEL_BOTTOM);g.strokePath();
+    const nt=getTheme(this.isLastLevel?0:this.levelIndex+1);
+    this.cameras.main.setBackgroundColor(nt.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
-    const cont=this.add.container(0,-H*0.3);
-    cont.add(this.add.text(cx,H*0.16,'LEVEL',{fontFamily:'"Press Start 2P"',fontSize:'18px',color:'#888888'}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.23,`${this.levelIndex+1} COMPLETE!`,{fontFamily:'"Press Start 2P"',fontSize:'26px',color:'#00ff88',shadow:{x:3,y:3,color:'#006633',blur:0,fill:true}}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.33,'LEVEL SCORE',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.39,`${this.levelScore}`,{fontFamily:'"Press Start 2P"',fontSize:'24px',color:'#00ffff'}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.48,`\u25c6 COINS  ${this.coinsCollected} / ${this.requiredCoins} REQ`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffdd00'}).setOrigin(0.5));
-    const coinBonus=this.coinsCollected*100;
-    if(coinBonus>0)cont.add(this.add.text(cx,H*0.55,`+${coinBonus} COIN BONUS`,{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ffaa00'}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.63,'TOTAL SCORE',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5));
-    const isNew=this.totalScore>=best&&this.totalScore>0;
-    cont.add(this.add.text(cx,H*0.69,`${this.totalScore}`,{fontFamily:'"Press Start 2P"',fontSize:'24px',color:isNew?'#ffff00':'#ffffff'}).setOrigin(0.5));
-    if(isNew)cont.add(this.add.text(cx,H*0.76,'\u2605 NEW BEST! \u2605',{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffff00'}).setOrigin(0.5));
-    if(!this.isLastLevel)cont.add(this.add.text(cx,H*0.83,`NEXT: LEVEL ${this.levelIndex+2} \u2022 ${getTheme(this.levelIndex+1).name}`,{fontFamily:'"Press Start 2P"',fontSize:'9px',color:'#aaaaaa'}).setOrigin(0.5));
-    this.add.existing(cont);this.tweens.add({targets:cont,y:0,duration:480,ease:'Back.easeOut'});
-    const label=this.isLastLevel?'TAP TO PLAY AGAIN':`TAP FOR LEVEL ${this.levelIndex+2}`;
-    const tap=this.add.text(cx,H*0.90,label,{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffffff'}).setOrigin(0.5).setDepth(10);
-    this.time.addEvent({delay:580,loop:true,callback:()=>tap.setVisible(!tap.visible)});
-    for(let i=0;i<60;i++) this.time.delayedCall(i*40,()=>{
-      const p=this.add.image(Phaser.Math.Between(20,W-20),Phaser.Math.Between(TUNNEL_TOP+10,TUNNEL_BOTTOM-10),'particle').setDepth(5).setScale(Phaser.Math.Between(1,3)).setTint([0xffdd00,0x00ffcc,0xff44ff,0x44ffff,0xffffff][Math.floor(Math.random()*5)]);
-      this.tweens.add({targets:p,y:p.y+Phaser.Math.Between(25,70),alpha:0,duration:900,onComplete:()=>p.destroy()});
-    });
-    this.time.delayedCall(700,()=>{
+    const coinBonus=this.coinsCollected*100, isNew=this.totalScore>=best&&this.totalScore>0;
+    const ni=this.isLastLevel?0:this.levelIndex+1, ns=this.isLastLevel?0:this.totalScore;
+    OV.show('ov-complete',
+      `<div class="ov-wrap">
+        <div class="ov-sub" style="color:#888">LEVEL</div>
+        <div class="ov-title" style="color:#00ff88;text-shadow:3px 3px #006633">${this.levelIndex+1} COMPLETE!</div>
+        <hr class="ov-rule">
+        <div class="ov-sub" style="color:#888">LEVEL SCORE</div>
+        <div class="ov-score" style="color:#00ffff">${this.levelScore}</div>
+        <div class="ov-sub" style="color:#ffdd00">\u25c6 COINS ${this.coinsCollected}/${this.requiredCoins} REQ</div>
+        ${coinBonus>0?`<div class="ov-sub" style="color:#ffaa00">+${coinBonus} COIN BONUS</div>`:''}
+        <hr class="ov-rule">
+        <div class="ov-sub" style="color:#888">TOTAL SCORE</div>
+        <div class="ov-score" style="color:${isNew?'#ffff00':'#ffffff'}">${this.totalScore}</div>
+        ${isNew?'<div class="ov-sub" style="color:#ffff00">\u2605 NEW BEST! \u2605</div>':''}
+        ${!this.isLastLevel?`<div class="ov-sub" style="color:#aaa">NEXT: LVL ${this.levelIndex+2} \u2022 ${getTheme(this.levelIndex+1).name}</div>`:''}
+        <button class="ov-btn" id="ov-next" style="margin-top:16px;border-color:#00ff88;color:#00ff88">${this.isLastLevel?'\u25b6 PLAY AGAIN':'\u25b6 LEVEL '+(this.levelIndex+2)}</button>
+      </div>`);
+    this.events.once('shutdown',()=>OV.hide());
+    this.time.delayedCall(400,()=>{
       let going=false;
-      const next=()=>{if(going)return;going=true;INPUT.clear();AUDIO.stopMusic();const ni=this.isLastLevel?0:this.levelIndex+1,ns=this.isLastLevel?0:this.totalScore;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:ni,totalScore:ns}));};
-      INPUT.once(next);
-      this.events.once('shutdown',()=>INPUT.clear());
+      const next=()=>{if(going)return;going=true;OV.hide();AUDIO.stopMusic();this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:ni,totalScore:ns}));};
+      addTap(document.getElementById('ov-next'),next);
       if(this.input.keyboard){this.input.keyboard.once('keydown-SPACE',next);this.input.keyboard.once('keydown-ENTER',next);}
     });
   }
@@ -926,32 +918,25 @@ class LevelFailedScene extends Phaser.Scene{
     AUDIO.init();AUDIO.resume();
     const theme=getTheme(this.levelIndex);
     this.cameras.main.setBackgroundColor(theme.bg);
-    const cx=W/2;
-    const g=this.add.graphics();
-    g.fillStyle(theme.wallFill);g.fillRect(0,0,W,TUNNEL_TOP);g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
-    g.lineStyle(3,0xff4400,1);
-    g.beginPath();g.moveTo(0,TUNNEL_TOP);g.lineTo(W,TUNNEL_TOP);g.strokePath();
-    g.beginPath();g.moveTo(0,TUNNEL_BOTTOM);g.lineTo(W,TUNNEL_BOTTOM);g.strokePath();
-    this.add.rectangle(cx,H/2,W,H,0x000000,0.60);
-    const cont=this.add.container(0,-H*0.25).setDepth(10);
-    cont.add(this.add.text(cx,H*0.17,'LEVEL FAILED',{fontFamily:'"Press Start 2P"',fontSize:'24px',color:'#ff5500',shadow:{x:3,y:3,color:'#661100',blur:0,fill:true}}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.28,'NOT ENOUGH COINS!',{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffaa44'}).setOrigin(0.5));
     const short=this.requiredCoins-this.coinsCollected;
-    cont.add(this.add.text(cx,H*0.38,'YOU COLLECTED',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.44,`${this.coinsCollected} / ${this.requiredCoins}`,{fontFamily:'"Press Start 2P"',fontSize:'28px',color:'#ffdd00'}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.53,`COLLECT ${short} MORE NEXT TIME`,{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ff8888'}).setOrigin(0.5));
-    const dg=this.add.graphics();dg.lineStyle(1,0x333333,1);dg.beginPath();dg.moveTo(40,H*0.61);dg.lineTo(W-40,H*0.61);dg.strokePath();cont.add(dg);
-    cont.add(this.add.text(cx,H*0.65,'LEVEL SCORE',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#555555'}).setOrigin(0.5));
-    cont.add(this.add.text(cx,H*0.71,`${this.levelScore}`,{fontFamily:'"Press Start 2P"',fontSize:'18px',color:'#666666'}).setOrigin(0.5));
-    this.add.existing(cont);this.tweens.add({targets:cont,y:0,duration:450,ease:'Back.easeOut'});
-    const tryBtn=this.add.text(cx,H*0.83,'\u25b6 TRY AGAIN',{fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffffff',shadow:{x:2,y:2,color:'#003388',blur:0,fill:true}}).setOrigin(0.5).setDepth(20);
-    this.time.addEvent({delay:550,loop:true,callback:()=>tryBtn.setVisible(!tryBtn.visible)});
-    this.add.text(cx,H*0.91,'level score is lost',{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#333333'}).setOrigin(0.5).setDepth(20);
-    this.time.delayedCall(600,()=>{
+    OV.show('ov-failed',
+      `<div class="ov-wrap">
+        <div class="ov-title" style="color:#ff5500;text-shadow:3px 3px #661100">LEVEL<br>FAILED</div>
+        <div class="ov-sub" style="color:#ffaa44;margin-top:6px">NOT ENOUGH COINS!</div>
+        <hr class="ov-rule">
+        <div class="ov-sub" style="color:#888">YOU COLLECTED</div>
+        <div class="ov-score" style="color:#ffdd00">${this.coinsCollected} / ${this.requiredCoins}</div>
+        <div class="ov-sub" style="color:#ff8888">COLLECT ${short} MORE NEXT TIME</div>
+        <hr class="ov-rule">
+        <div class="ov-sub" style="color:#555">LEVEL SCORE: ${this.levelScore}</div>
+        <button class="ov-btn" id="ov-retry" style="margin-top:16px">\u25b6 TRY AGAIN</button>
+        <div class="ov-sub" style="color:#333;margin-top:6px">level score is lost</div>
+      </div>`);
+    this.events.once('shutdown',()=>OV.hide());
+    this.time.delayedCall(400,()=>{
       let going=false;
-      const go=()=>{if(going)return;going=true;INPUT.clear();this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));};
-      INPUT.once(go);
-      this.events.once('shutdown',()=>INPUT.clear());
+      const go=()=>{if(going)return;going=true;OV.hide();this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore});};
+      addTap(document.getElementById('ov-retry'),go);
       if(this.input.keyboard){this.input.keyboard.on('keydown-SPACE',go);this.input.keyboard.on('keydown-ENTER',go);}
     });
   }
@@ -965,36 +950,31 @@ class DeathScene extends Phaser.Scene{
     AUDIO.init();AUDIO.resume();
     const theme=getTheme(this.levelIndex);
     this.cameras.main.setBackgroundColor(theme.bg);
-    const best=parseInt(localStorage.getItem('gf_best')||'0'),cx=W/2;
-    const g=this.add.graphics();
-    g.fillStyle(theme.wallFill);g.fillRect(0,0,W,TUNNEL_TOP);g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
-    g.lineStyle(3,0x0088ff,1);
-    g.beginPath();g.moveTo(0,TUNNEL_TOP);g.lineTo(W,TUNNEL_TOP);g.strokePath();
-    g.beginPath();g.moveTo(0,TUNNEL_BOTTOM);g.lineTo(W,TUNNEL_BOTTOM);g.strokePath();
-    this.add.rectangle(cx,H/2,W,H,0x000000,0.58);
-    this.add.text(cx,H*0.17,'GAME',{fontFamily:'"Press Start 2P"',fontSize:'32px',color:'#ff4444',shadow:{x:3,y:3,color:'#880000',blur:0,fill:true}}).setOrigin(0.5);
-    this.add.text(cx,H*0.26,'OVER',{fontFamily:'"Press Start 2P"',fontSize:'32px',color:'#ff4444',shadow:{x:3,y:3,color:'#880000',blur:0,fill:true}}).setOrigin(0.5);
-    this.add.text(cx,H*0.38,`LEVEL ${this.levelIndex+1} \u2022 ${theme.name}`,{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ff88ff'}).setOrigin(0.5);
-    this.add.text(cx,H*0.46,'SCORE',{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#888888'}).setOrigin(0.5);
+    const best=parseInt(localStorage.getItem('gf_best')||'0');
     const isNew=this.finalScore>=best&&this.finalScore>0;
-    this.add.text(cx,H*0.52,`${this.finalScore}`,{fontFamily:'"Press Start 2P"',fontSize:'26px',color:isNew?'#ffff00':'#00ffff'}).setOrigin(0.5);
-    if(isNew)this.add.text(cx,H*0.60,'\u2605 NEW BEST! \u2605',{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffff00'}).setOrigin(0.5);
-    else this.add.text(cx,H*0.60,`BEST: ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(0.5);
-    this.add.text(cx,H*0.68,`\u25c6 COINS: ${this.coins}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffdd00'}).setOrigin(0.5);
-    const dg=this.add.graphics();dg.lineStyle(1,0x333333,1);dg.beginPath();dg.moveTo(20,H*0.74);dg.lineTo(W-20,H*0.74);dg.strokePath();
-    const retryTxt=this.add.text(cx,H*0.79,`\u25b6 RETRY LEVEL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffffff'}).setOrigin(0.5);
-    this.add.text(cx,H*0.87,'\u25b6 RESTART FROM LVL 1',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#666666'}).setOrigin(0.5);
-    this.add.text(cx,H*0.93,'bottom half = restart from lvl 1',{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#333333'}).setOrigin(0.5);
-    this.time.addEvent({delay:580,loop:true,callback:()=>retryTxt.setVisible(!retryTxt.visible)});
-    this.time.delayedCall(600,()=>{
+    OV.show('ov-death',
+      `<div class="ov-wrap">
+        <div class="ov-title" style="color:#ff4444;text-shadow:3px 3px #880000">GAME<br>OVER</div>
+        <div class="ov-sub" style="color:#ff88ff">LEVEL ${this.levelIndex+1} \u2022 ${theme.name}</div>
+        <hr class="ov-rule">
+        <div class="ov-sub" style="color:#888">SCORE</div>
+        <div class="ov-score" style="color:${isNew?'#ffff00':'#00ffff'}">${this.finalScore}</div>
+        ${isNew?'<div class="ov-sub" style="color:#ffff00">\u2605 NEW BEST! \u2605</div>':`<div class="ov-sub" style="color:#ffff00">BEST: ${best}</div>`}
+        <div class="ov-sub" style="color:#ffdd00">\u25c6 COINS: ${this.coins}</div>
+        <hr class="ov-rule">
+        <button class="ov-btn" id="ov-retry" style="border-color:#00ffff;color:#00ffff">\u25b6 RETRY LEVEL ${this.levelIndex+1}</button>
+        <button class="ov-btn ov-btn-sm" id="ov-restart">\u25b6 RESTART FROM LVL 1</button>
+      </div>`);
+    this.events.once('shutdown',()=>OV.hide());
+    this.time.delayedCall(400,()=>{
       let going=false;
-      const go=(pos)=>{if(going)return;going=true;INPUT.clear();const li=(pos&&pos.y<H*0.84)?this.levelIndex:0;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:li,totalScore:0}));};
-      INPUT.once(go);
-      this.events.once('shutdown',()=>INPUT.clear());
+      const go=(li)=>{if(going)return;going=true;OV.hide();this.scene.start('Game',{levelIndex:li,totalScore:0});};
+      addTap(document.getElementById('ov-retry'),()=>go(this.levelIndex));
+      addTap(document.getElementById('ov-restart'),()=>go(0));
       if(this.input.keyboard){
-        this.input.keyboard.on('keydown-SPACE',()=>go({y:0}));
-        this.input.keyboard.on('keydown-ENTER',()=>go({y:0}));
-        this.input.keyboard.on('keydown-R',()=>go({y:H}));
+        this.input.keyboard.on('keydown-SPACE',()=>go(this.levelIndex));
+        this.input.keyboard.on('keydown-ENTER',()=>go(this.levelIndex));
+        this.input.keyboard.on('keydown-R',()=>go(0));
       }
     });
   }
