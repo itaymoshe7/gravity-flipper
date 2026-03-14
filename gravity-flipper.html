@@ -7,16 +7,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100vw; height: 100vh;
-    overflow: hidden;
-    touch-action: none;
-  }
-  canvas { display: block; image-rendering: pixelated; }
+  body { background:#000; display:flex; justify-content:center; align-items:center;
+         width:100vw; height:100vh; overflow:hidden; touch-action:none; }
+  canvas { display:block; image-rendering:pixelated; }
 </style>
 </head>
 <body>
@@ -27,28 +20,31 @@
 const W = 480, H = 720;
 const TUNNEL_TOP    = 80;
 const TUNNEL_BOTTOM = H - 80;
+const TUNNEL_H      = TUNNEL_BOTTOM - TUNNEL_TOP;
 const PLAYER_X      = 100;
-const GRAVITY_FORCE = 1800;
-const PARTICLE_COUNT = 18;
+const GRAVITY_FORCE = 1900;
 
-// ── Level definitions ────────────────────────────────────────────────────────
-// gap = barrier opening height, spacing = px between obstacles
+// ── Level definitions ─────────────────────────────────────────────────────────
+// distance = pixels player must travel to reach finish line
+// gap      = barrier opening height in px
+// spacing  = px between obstacle clusters
+// hints shown on intro screen
 const LEVELS = [
-  { duration:20, startSpeed:250, endSpeed:272, gap:215, spacing:500, types:['barrier'],                         coins:6,  hint:'TAP TO FLIP GRAVITY'   },
-  { duration:22, startSpeed:280, endSpeed:312, gap:188, spacing:430, types:['spike','barrier'],                  coins:8,  hint:'WATCH THE WALLS'        },
-  { duration:22, startSpeed:322, endSpeed:355, gap:168, spacing:375, types:['spike','barrier'],                  coins:8,  hint:'SPEED UP!'               },
-  { duration:24, startSpeed:358, endSpeed:390, gap:150, spacing:330, types:['spike','barrier','moving'],         coins:10, hint:'OBSTACLES MOVE NOW'      },
-  { duration:24, startSpeed:392, endSpeed:422, gap:134, spacing:290, types:['spike','barrier','moving'],         coins:10, hint:'STAY FOCUSED'             },
-  { duration:25, startSpeed:424, endSpeed:452, gap:119, spacing:255, types:['spike','barrier','moving','gauntlet'], coins:12, hint:'GAUNTLET MODE'        },
-  { duration:26, startSpeed:454, endSpeed:478, gap:105, spacing:222, types:['spike','barrier','moving','gauntlet'], coins:12, hint:'ALMOST THERE'         },
-  { duration:28, startSpeed:480, endSpeed:500, gap:91,  spacing:192, types:['spike','barrier','moving','gauntlet'], coins:14, hint:'MAXIMUM INTENSITY'    },
+  { distance:2600, startSpeed:260, endSpeed:285, gap:200, spacing:430, types:['barrier'],                            coins:5,  hint:'FLIP GRAVITY TO DODGE' },
+  { distance:3000, startSpeed:295, endSpeed:328, gap:178, spacing:370, types:['spike','barrier'],                    coins:7,  hint:'WATCH THE SPIKES'       },
+  { distance:3300, startSpeed:335, endSpeed:372, gap:158, spacing:318, types:['spike','barrier'],                    coins:7,  hint:'SPEED INCREASING'       },
+  { distance:3600, startSpeed:378, endSpeed:416, gap:140, spacing:272, types:['spike','barrier','moving'],           coins:9,  hint:'OBSTACLES NOW MOVE'     },
+  { distance:3900, startSpeed:420, endSpeed:458, gap:123, spacing:235, types:['spike','barrier','moving'],           coins:9,  hint:'STAY FOCUSED'           },
+  { distance:4200, startSpeed:462, endSpeed:498, gap:108, spacing:203, types:['spike','barrier','moving','gauntlet'],coins:11, hint:'GAUNTLET MODE'          },
+  { distance:4600, startSpeed:502, endSpeed:536, gap:95,  spacing:178, types:['spike','barrier','moving','gauntlet'],coins:11, hint:'ALMOST THERE'           },
+  { distance:5000, startSpeed:540, endSpeed:572, gap:84,  spacing:156, types:['spike','barrier','moving','gauntlet'],coins:13, hint:'MAXIMUM INTENSITY'      },
 ];
-function getLevel(n) { return LEVELS[Math.min(n, LEVELS.length - 1)]; }
+function getLevel(n){ return LEVELS[Math.min(n,LEVELS.length-1)]; }
 
 function lerp(a,b,t){ return a+(b-a)*t; }
 function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
 
-// ── BootScene ────────────────────────────────────────────────────────────────
+// ── BootScene ─────────────────────────────────────────────────────────────────
 class BootScene extends Phaser.Scene {
   constructor(){ super('Boot'); }
   preload(){ this.makeTextures(); }
@@ -58,58 +54,43 @@ class BootScene extends Phaser.Scene {
 
     // Player ship 24×16
     g.clear();
-    const sp = [
-      '....XXXX....',
-      '...XXXXXX...',
-      '..XXXXXXXX..',
-      '.XXXXXXXXXX.',
-      'XXXXXXXXXXXX',
-      'XXXXXXXXXXXX',
-      '.XX.XXXX.XX.',
-      '....XXXX....',
-    ];
+    const sp=['....XXXX....','...XXXXXX...','..XXXXXXXX..','XXXXXXXXXXXX','XXXXXXXXXXXX','.XX.XXXX.XX.','....XXXX....'];
     sp.forEach((row,ry)=>[...row].forEach((ch,rx)=>{
-      if(ch==='X'){
-        g.fillStyle((rx===5||rx===6)?0xffffff:0x00ffff);
-        g.fillRect(rx*2,ry*2,2,2);
-      }
+      if(ch==='X'){ g.fillStyle((rx===5||rx===6)?0xffffff:0x00ffff); g.fillRect(rx*2,ry*2,2,2); }
     }));
-    g.generateTexture('player',24,16);
+    g.generateTexture('player',24,14);
 
-    // Spike down (wall top)
+    // Spike down
     g.clear();
-    g.fillStyle(0xff4444); g.fillTriangle(8,0,0,12,16,12);
-    g.fillStyle(0xff8888); g.fillTriangle(8,2,2,12,14,12);
+    g.fillStyle(0xff3333); g.fillTriangle(8,0,0,12,16,12);
+    g.fillStyle(0xff7777); g.fillTriangle(8,2,2,12,14,12);
     g.generateTexture('spike',16,12);
 
-    // Spike up (wall bottom)
+    // Spike up
     g.clear();
-    g.fillStyle(0xff4444); g.fillTriangle(8,12,0,0,16,0);
-    g.fillStyle(0xff8888); g.fillTriangle(8,10,2,0,14,0);
+    g.fillStyle(0xff3333); g.fillTriangle(8,12,0,0,16,0);
+    g.fillStyle(0xff7777); g.fillTriangle(8,10,2,0,14,0);
     g.generateTexture('spike_up',16,12);
 
-    // Block 24×24
+    // Block
     g.clear();
-    g.fillStyle(0x8844ff); g.fillRect(0,0,24,24);
-    g.fillStyle(0xaa66ff); g.fillRect(2,2,20,4); g.fillRect(2,2,4,20);
-    g.fillStyle(0x330066); g.fillRect(20,4,4,20); g.fillRect(4,20,16,4);
+    g.fillStyle(0x7733ee); g.fillRect(0,0,24,24);
+    g.fillStyle(0x9955ff); g.fillRect(2,2,20,4); g.fillRect(2,2,4,20);
+    g.fillStyle(0x220055); g.fillRect(20,4,4,20); g.fillRect(4,20,16,4);
     g.generateTexture('block',24,24);
 
-    // Coin 12×12
+    // Coin — diamond shape
     g.clear();
-    g.fillStyle(0xffcc00);
-    g.fillCircle(6,6,5);
-    g.fillStyle(0xffee88);
-    g.fillCircle(5,4,2);
-    g.fillStyle(0xaa8800);
-    g.fillCircle(7,8,1);
+    g.fillStyle(0xffdd00); g.fillTriangle(6,0,12,6,6,12); g.fillTriangle(6,0,0,6,6,12);
+    g.fillStyle(0xffee88); g.fillTriangle(6,1,11,6,6,10); g.fillTriangle(6,1,1,6,6,10);
+    g.fillStyle(0xffffcc,0.6); g.fillRect(5,2,2,2);
     g.generateTexture('coin',12,12);
 
-    // Particle 4×4
+    // Particle
     g.clear(); g.fillStyle(0xffffff); g.fillRect(0,0,4,4);
     g.generateTexture('particle',4,4);
 
-    // Star 2×2
+    // Star
     g.clear(); g.fillStyle(0xffffff); g.fillRect(0,0,2,2);
     g.generateTexture('star',2,2);
 
@@ -118,32 +99,27 @@ class BootScene extends Phaser.Scene {
   create(){ this.scene.start('Menu'); }
 }
 
-// ── MenuScene ────────────────────────────────────────────────────────────────
+// ── MenuScene ─────────────────────────────────────────────────────────────────
 class MenuScene extends Phaser.Scene {
   constructor(){ super('Menu'); }
-
   create(){
     this.cameras.main.setBackgroundColor('#000011');
     this.buildStars();
     this.buildTunnel();
     this.buildUI();
-    this.input.once('pointerdown', ()=> this.scene.start('Game', {levelIndex:0, totalScore:0}));
-    this.input.keyboard.once('keydown', ()=> this.scene.start('Game', {levelIndex:0, totalScore:0}));
-    this.time.addEvent({ delay:600, loop:true,
-      callback:()=>{ if(this.tap) this.tap.setVisible(!this.tap.visible); }
-    });
+    const go=()=>this.scene.start('Game',{levelIndex:0,totalScore:0});
+    this.input.once('pointerdown',go);
+    this.input.keyboard.once('keydown',go);
+    this.time.addEvent({delay:600,loop:true,callback:()=>{ if(this.tap) this.tap.setVisible(!this.tap.visible); }});
   }
-
   buildStars(){
     for(let i=0;i<80;i++){
-      const s = this.add.image(Phaser.Math.Between(0,W), Phaser.Math.Between(0,H), 'star')
-        .setAlpha(Math.random()*0.8+0.2);
+      const s=this.add.image(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),'star').setAlpha(Math.random()*0.8+0.2);
       this.tweens.add({targets:s,alpha:0.1,duration:Phaser.Math.Between(800,2000),yoyo:true,repeat:-1});
     }
   }
-
   buildTunnel(){
-    const g = this.add.graphics();
+    const g=this.add.graphics();
     g.fillStyle(0x001133); g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
     g.lineStyle(3,0x0088ff,1);
     g.beginPath(); g.moveTo(0,TUNNEL_TOP); g.lineTo(W,TUNNEL_TOP); g.strokePath();
@@ -152,93 +128,86 @@ class MenuScene extends Phaser.Scene {
     g.beginPath(); g.moveTo(0,TUNNEL_TOP); g.lineTo(W,TUNNEL_TOP); g.strokePath();
     g.beginPath(); g.moveTo(0,TUNNEL_BOTTOM); g.lineTo(W,TUNNEL_BOTTOM); g.strokePath();
   }
-
   buildUI(){
-    const cx = W/2;
-    this.add.text(cx, H*0.25,'GRAVITY',{fontFamily:'"Press Start 2P"',fontSize:'36px',color:'#00ffff',
-      shadow:{x:3,y:3,color:'#0044ff',blur:0,fill:true}}).setOrigin(0.5);
-    this.add.text(cx, H*0.35,'FLIPPER',{fontFamily:'"Press Start 2P"',fontSize:'36px',color:'#ff44ff',
-      shadow:{x:3,y:3,color:'#880088',blur:0,fill:true}}).setOrigin(0.5);
-
-    const ship = this.add.image(cx, H*0.52,'player').setScale(3);
-    this.tweens.add({targets:ship,y:H*0.52-12,duration:700,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
-
-    const best = localStorage.getItem('gf_best')||0;
-    const reach = localStorage.getItem('gf_level')||1;
-    this.add.text(cx, H*0.63,`BEST: ${best} PTS`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(0.5);
-    this.add.text(cx, H*0.70,`REACHED: LEVEL ${reach}`,{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5);
-
-    this.tap = this.add.text(cx, H*0.79,'TAP TO START',{fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffffff'}).setOrigin(0.5);
-    this.add.text(cx, H*0.88,'TAP = FLIP GRAVITY',{fontFamily:'"Press Start 2P"',fontSize:'9px',color:'#555555'}).setOrigin(0.5);
+    const cx=W/2;
+    this.add.text(cx,H*0.24,'GRAVITY',{fontFamily:'"Press Start 2P"',fontSize:'36px',color:'#00ffff',shadow:{x:3,y:3,color:'#0044ff',blur:0,fill:true}}).setOrigin(0.5);
+    this.add.text(cx,H*0.34,'FLIPPER',{fontFamily:'"Press Start 2P"',fontSize:'36px',color:'#ff44ff',shadow:{x:3,y:3,color:'#880088',blur:0,fill:true}}).setOrigin(0.5);
+    const ship=this.add.image(cx,H*0.51,'player').setScale(3);
+    this.tweens.add({targets:ship,y:H*0.51-12,duration:700,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
+    const best=localStorage.getItem('gf_best')||0;
+    const reach=localStorage.getItem('gf_level')||1;
+    this.add.text(cx,H*0.62,`BEST: ${best} PTS`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(0.5);
+    this.add.text(cx,H*0.69,`REACHED LEVEL ${reach}`,{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5);
+    this.tap=this.add.text(cx,H*0.78,'TAP TO START',{fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffffff'}).setOrigin(0.5);
+    this.add.text(cx,H*0.87,'TAP = FLIP GRAVITY',{fontFamily:'"Press Start 2P"',fontSize:'9px',color:'#444444'}).setOrigin(0.5);
   }
 }
 
-// ── GameScene ────────────────────────────────────────────────────────────────
+// ── GameScene ─────────────────────────────────────────────────────────────────
 class GameScene extends Phaser.Scene {
   constructor(){ super('Game'); }
 
   init(data){
-    this.levelIndex  = data.levelIndex  || 0;
-    this.totalScore  = data.totalScore  || 0;
+    this.levelIndex = data.levelIndex||0;
+    this.totalScore = data.totalScore||0;
   }
 
   create(){
     this.cameras.main.setBackgroundColor('#000011');
     this.lvl = getLevel(this.levelIndex);
 
-    // State
-    this.speed         = this.lvl.startSpeed;
-    this.gravDir       = 1;
-    this.vy            = 0;
-    this.alive         = true;
-    this.levelElapsed  = 0;
-    this.distTraveled  = 0;
-    this.flipCooldown  = 0;
-    this.nextObstacleX = W + 300;
-    this.coinsCollected= 0;
-    this.levelScore    = 0;
-    this.gameStarted   = false;   // false during intro overlay
-    this.cameraShake   = 0;
+    this.speed          = this.lvl.startSpeed;
+    this.gravDir        = 1;
+    this.vy             = 0;
+    this.alive          = true;
+    this.gameStarted    = false;
+    this.levelDone      = false;
+    this.distTraveled   = 0;
+    this.flipCooldown   = 0;
+    this.coinsCollected = 0;
+    this.levelScore     = 0;
+    this.cameraShake    = 0;
+    // World-space X of next obstacle cluster
+    this.nextObstacleWorldX = 380;
 
-    // Groups
+    // Safe-zone list: [{worldX, worldXEnd, minY, maxY}] — for coin placement
+    this.safeZones = [];
+
     this.obstacles = this.add.group();
     this.coins     = this.add.group();
     this.particles = this.add.group();
     this.stars     = this.add.group();
 
     this.buildStars();
-    this.buildWallGraphics();
+    this.buildWallGfx();
     this.buildPlayer();
     this.buildUI();
+    this.buildFinishLine();
     this.buildInputs();
-    this.showLevelIntro();
+    this.showIntro();
   }
 
-  // ── Starfield ───────────────────────────────────────────────────────────────
+  // ── Stars ──────────────────────────────────────────────────────────────────
   buildStars(){
     for(let i=0;i<60;i++){
-      const s = this.add.image(
-        Phaser.Math.Between(0,W),
-        Phaser.Math.Between(TUNNEL_TOP+4,TUNNEL_BOTTOM-4),
-        'star'
-      ).setAlpha(Math.random()*0.4+0.1).setDepth(0);
-      s.scrollX = Math.random()*0.3+0.05;
+      const s=this.add.image(Phaser.Math.Between(0,W),Phaser.Math.Between(TUNNEL_TOP+4,TUNNEL_BOTTOM-4),'star')
+        .setAlpha(Math.random()*0.4+0.1).setDepth(0);
+      s.scrollX=Math.random()*0.3+0.05;
       this.stars.add(s);
     }
   }
 
-  // ── Walls ───────────────────────────────────────────────────────────────────
-  buildWallGraphics(){
-    this.wallGfx = this.add.graphics().setDepth(5);
+  // ── Walls ──────────────────────────────────────────────────────────────────
+  buildWallGfx(){
+    this.wallGfx=this.add.graphics().setDepth(5);
     this.redrawWalls(0);
   }
-
-  redrawWalls(offset){
-    const g = this.wallGfx; g.clear();
+  redrawWalls(off){
+    const g=this.wallGfx; g.clear();
     g.fillStyle(0x000922);
     g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
     g.lineStyle(1,0x001144,0.6);
-    for(let x=-(offset%40);x<W;x+=40){
+    for(let x=-(off%40);x<W;x+=40){
       g.beginPath(); g.moveTo(x,0); g.lineTo(x,TUNNEL_TOP); g.strokePath();
       g.beginPath(); g.moveTo(x,TUNNEL_BOTTOM); g.lineTo(x,H); g.strokePath();
     }
@@ -252,223 +221,260 @@ class GameScene extends Phaser.Scene {
     g.beginPath(); g.moveTo(0,TUNNEL_BOTTOM); g.lineTo(W,TUNNEL_BOTTOM); g.strokePath();
   }
 
-  // ── Player ──────────────────────────────────────────────────────────────────
+  // ── Player ─────────────────────────────────────────────────────────────────
   buildPlayer(){
-    this.player = this.add.image(PLAYER_X, H/2,'player').setScale(2).setDepth(10);
-    this.trail = [];
+    this.player=this.add.image(PLAYER_X,H/2,'player').setScale(2).setDepth(10);
+    this.trail=[];
     for(let i=0;i<6;i++){
-      const t = this.add.image(PLAYER_X,H/2,'player').setScale(2).setAlpha(0.12*(6-i)).setDepth(9);
-      this.trail.push(t);
+      this.trail.push(this.add.image(PLAYER_X,H/2,'player').setScale(2).setAlpha(0.1*(6-i)).setDepth(9));
     }
-    this.trailHistory = Array(6).fill({x:PLAYER_X,y:H/2});
+    this.trailHist=Array(6).fill({x:PLAYER_X,y:H/2});
   }
 
-  // ── UI ──────────────────────────────────────────────────────────────────────
+  // ── Finish line ────────────────────────────────────────────────────────────
+  buildFinishLine(){
+    // Container for the finish line visual
+    this.finishGfx = this.add.graphics().setDepth(8);
+    this.finishTxt = this.add.text(0, TUNNEL_TOP-22,'FINISH',{
+      fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'
+    }).setOrigin(0.5,1).setDepth(9);
+    this.finishGlow = 0;
+    this.finishPulse = 0;
+  }
+
+  updateFinishLine(){
+    // screenX of finish line
+    const sx = PLAYER_X + (this.lvl.distance - this.distTraveled);
+    this.finishTxt.x = sx;
+
+    const g = this.finishGfx;
+    g.clear();
+
+    // Only draw when on-screen
+    if(sx < -20 || sx > W+20) return;
+
+    this.finishPulse = (this.finishPulse + 0.08) % (Math.PI*2);
+    const glow = 0.6 + Math.sin(this.finishPulse)*0.4;
+
+    // Checkered pattern columns
+    const sqH = 18;
+    for(let y=TUNNEL_TOP; y<TUNNEL_BOTTOM; y+=sqH){
+      const dark = (Math.floor((y-TUNNEL_TOP)/sqH)%2)===0;
+      g.fillStyle(dark?0xffffff:0xffff00, glow*0.9);
+      g.fillRect(sx-5, y, 10, sqH);
+    }
+    // Bright centre line
+    g.lineStyle(3, 0xffffff, glow);
+    g.beginPath(); g.moveTo(sx,TUNNEL_TOP); g.lineTo(sx,TUNNEL_BOTTOM); g.strokePath();
+    // Glow halo
+    g.lineStyle(14, 0xffff00, glow*0.2);
+    g.beginPath(); g.moveTo(sx,TUNNEL_TOP); g.lineTo(sx,TUNNEL_BOTTOM); g.strokePath();
+
+    // Check crossing
+    if(sx <= PLAYER_X && !this.levelDone){ this.completeLEVEL(); }
+  }
+
+  // ── UI ─────────────────────────────────────────────────────────────────────
   buildUI(){
-    const best = parseInt(localStorage.getItem('gf_best')||'0');
-    // Score (top left)
-    this.scoreTxt = this.add.text(10,10,'0',{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#00ffff'}).setDepth(20);
-    // Best (top right)
-    this.bestTxt  = this.add.text(W-10,10,`BEST ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(1,0).setDepth(20);
-    // Level (top centre)
-    this.levelTxt = this.add.text(W/2,10,`LVL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ff88ff'}).setOrigin(0.5,0).setDepth(20);
-    // Coin counter
-    this.coinTxt  = this.add.text(10,30,'⬡ 0',{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffcc00'}).setDepth(20);
-    // Level progress bar (bottom)
-    this.progGfx  = this.add.graphics().setDepth(20);
-    // Speed bar
-    this.speedGfx = this.add.graphics().setDepth(20);
-    // Timer bar (thin, top)
-    this.timerGfx = this.add.graphics().setDepth(20);
+    const best=parseInt(localStorage.getItem('gf_best')||'0');
+    this.scoreTxt=this.add.text(10,10,'0',{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#00ffff'}).setDepth(20);
+    this.bestTxt =this.add.text(W-10,10,`BEST ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(1,0).setDepth(20);
+    this.levelTxt=this.add.text(W/2,10,`LVL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ff88ff'}).setOrigin(0.5,0).setDepth(20);
+    this.coinTxt =this.add.text(10,30,`\u25c6 0`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffdd00'}).setDepth(20);
+    this.progGfx =this.add.graphics().setDepth(20);
   }
 
-  // ── Input ───────────────────────────────────────────────────────────────────
   buildInputs(){
-    this.input.on('pointerdown', this.flip, this);
-    this.input.keyboard.on('keydown-SPACE', this.flip, this);
-    this.input.keyboard.on('keydown-UP', this.flip, this);
+    this.input.on('pointerdown',this.flip,this);
+    this.input.keyboard.on('keydown-SPACE',this.flip,this);
+    this.input.keyboard.on('keydown-UP',this.flip,this);
   }
 
-  // ── Level intro overlay ─────────────────────────────────────────────────────
-  showLevelIntro(){
-    const cx = W/2;
-    this.introContainer = this.add.container(0,0).setDepth(30);
-
-    const bg = this.add.rectangle(cx,H/2,W,H,0x000000,0.72);
-    const numTxt = this.add.text(cx,H*0.36,`LEVEL ${this.levelIndex+1}`,{
-      fontFamily:'"Press Start 2P"',fontSize:'40px',color:'#ffff00',
+  // ── Level intro ────────────────────────────────────────────────────────────
+  showIntro(){
+    const cx=W/2;
+    this.introCont=this.add.container(0,0).setDepth(30);
+    const bg=this.add.rectangle(cx,H/2,W,H,0x000000,0.75);
+    const numTxt=this.add.text(cx,H*0.33,`LEVEL ${this.levelIndex+1}`,{
+      fontFamily:'"Press Start 2P"',fontSize:'42px',color:'#ffff00',
       shadow:{x:4,y:4,color:'#886600',blur:0,fill:true}
     }).setOrigin(0.5);
-    const hintTxt = this.add.text(cx,H*0.48, this.lvl.hint,{
+    const hintTxt=this.add.text(cx,H*0.46,this.lvl.hint,{
       fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#00ffff'
     }).setOrigin(0.5);
-    const coinsHint = this.add.text(cx,H*0.57,`${this.lvl.coins} COINS TO COLLECT`,{
-      fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ffcc00'
+    const coinHint=this.add.text(cx,H*0.54,`${this.lvl.coins} COINS TO COLLECT`,{
+      fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ffdd00'
     }).setOrigin(0.5);
-    const tapHint = this.add.text(cx,H*0.68,'TAP TO START!',{
+    const tapHint=this.add.text(cx,H*0.65,'TAP TO START!',{
       fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#ffffff'
     }).setOrigin(0.5);
-
-    this.introContainer.add([bg,numTxt,hintTxt,coinsHint,tapHint]);
-
-    // Blink tap hint
+    this.introCont.add([bg,numTxt,hintTxt,coinHint,tapHint]);
     this.time.addEvent({delay:500,loop:true,callback:()=>tapHint.setVisible(!tapHint.visible)});
 
-    // Wait for tap or auto-start after 3s
-    const startGame = ()=>{
+    const start=()=>{
       if(this.gameStarted) return;
-      this.gameStarted = true;
-      this.tweens.add({
-        targets:this.introContainer, alpha:0, duration:300,
-        onComplete:()=>this.introContainer.destroy()
-      });
+      this.gameStarted=true;
+      this.tweens.add({targets:this.introCont,alpha:0,duration:280,onComplete:()=>this.introCont.destroy()});
     };
-
-    this.input.once('pointerdown', startGame);
-    this.input.keyboard.once('keydown', startGame);
-    this.time.delayedCall(3000, startGame);
+    this.input.once('pointerdown',start);
+    this.input.keyboard.once('keydown',start);
+    this.time.delayedCall(3500,start);
   }
 
-  // ── Obstacle spawning ───────────────────────────────────────────────────────
-  spawnObstacle(x){
-    const types = this.lvl.types;
-    const pick = types[Math.floor(Math.random()*types.length)];
-
-    // At least one coin near each obstacle cluster
-    if(Math.random()<0.7) this.spawnCoin(x + Phaser.Math.Between(-60,60));
-
-    if(pick==='spike')   this.spawnSpikes(x);
-    else if(pick==='barrier') this.spawnBarrier(x);
-    else if(pick==='moving')  this.spawnMoving(x);
-    else if(pick==='gauntlet'){ this.spawnSpikes(x); this.spawnBarrier(x+85); }
-  }
-
-  spawnSpikes(x){
-    const numTop = Phaser.Math.Between(1, 1+Math.floor(this.levelIndex*0.5));
-    const numBot = this.levelIndex>=2 ? Phaser.Math.Between(0, Math.floor(this.levelIndex*0.4)) : 0;
-    const sp = 18;
-    for(let i=0;i<numTop;i++){
-      const s=this.add.image(x+i*sp,TUNNEL_TOP+6,'spike').setDepth(6);
-      s.obstacleType='spike'; this.obstacles.add(s);
-    }
-    for(let i=0;i<numBot;i++){
-      const s=this.add.image(x+i*sp,TUNNEL_BOTTOM-6,'spike_up').setDepth(6);
-      s.obstacleType='spike'; this.obstacles.add(s);
-    }
-  }
-
-  spawnBarrier(x){
-    const gapH = this.lvl.gap;
-    const gapY = Phaser.Math.Between(TUNNEL_TOP+20, TUNNEL_BOTTOM-gapH-20);
-    const bh=24;
-    for(let y=TUNNEL_TOP;y<gapY;y+=bh){
-      const b=this.add.image(x,y+bh/2,'block').setDepth(6);
-      b.obstacleType='barrier'; this.obstacles.add(b);
-    }
-    for(let y=gapY+gapH;y<TUNNEL_BOTTOM;y+=bh){
-      const b=this.add.image(x,y+bh/2,'block').setDepth(6);
-      b.obstacleType='barrier'; this.obstacles.add(b);
-    }
-    // Coin in the gap (requires navigation)
-    if(Math.random()<0.6) this.spawnCoinAt(x, gapY + gapH/2);
-  }
-
-  spawnMoving(x){
-    const b=this.add.image(x,H/2,'block').setScale(1.5).setDepth(6);
-    b.obstacleType='moving';
-    b.moveSpeed = lerp(50,160,this.levelIndex/7)*(Math.random()>0.5?1:-1);
-    b.minY=TUNNEL_TOP+20; b.maxY=TUNNEL_BOTTOM-20;
-    this.obstacles.add(b);
-  }
-
-  // ── Coin spawning ────────────────────────────────────────────────────────────
-  spawnCoin(x){
-    // 3 coin types: easy (mid), medium (3/4 height), hard (near wall)
-    const roll = Math.random();
-    let y;
-    if(roll<0.5)      y = lerp(TUNNEL_TOP+40, TUNNEL_BOTTOM-40, Math.random()); // anywhere mid
-    else if(roll<0.8) y = Math.random()>0.5 ? TUNNEL_TOP+28 : TUNNEL_BOTTOM-28; // near walls
-    else              y = H/2; // dead centre
-    this.spawnCoinAt(x, y);
-  }
-
-  spawnCoinAt(x, y){
-    const c = this.add.image(x, y, 'coin').setDepth(7).setScale(1.4);
-    c.isCoin = true;
-    c.bobOffset = Math.random()*Math.PI*2;
-    this.coins.add(c);
-  }
-
-  // ── Gravity flip ─────────────────────────────────────────────────────────────
+  // ── Gravity flip ───────────────────────────────────────────────────────────
   flip(){
     if(!this.alive||!this.gameStarted) return;
     if(this.flipCooldown>0) return;
-    this.flipCooldown = 0.12;
-    this.gravDir *= -1;
-    this.vy = this.gravDir * -380;
-    this.cameras.main.flash(80,0,120,255,false);
-    this.emitParticles(this.player.x, this.player.y, [0x00ffff,0xff44ff,0xffffff,0xffff00], PARTICLE_COUNT);
-    this.cameraShake = 0.06;
+    this.flipCooldown=0.12;
+    this.gravDir*=-1;
+    this.vy=this.gravDir*-400;
+    this.cameras.main.flash(80,0,100,255,false);
+    this.emitParticles(this.player.x,this.player.y,[0x00ffff,0xff44ff,0xffffff,0xffff00],18,60,170);
+    this.cameraShake=0.07;
   }
 
-  // ── Particles ────────────────────────────────────────────────────────────────
-  emitParticles(px, py, colors, count, speedMin=60, speedMax=160){
+  // ── Particles ──────────────────────────────────────────────────────────────
+  emitParticles(px,py,colors,count,sMin=60,sMax=160){
     for(let i=0;i<count;i++){
-      let p = this.getPooledParticle();
+      let p=this.getPooledParticle();
       if(!p){ p=this.add.image(0,0,'particle').setDepth(15); this.particles.add(p); }
       p.setActive(true).setVisible(true);
       p.x=px; p.y=py;
-      const angle=(i/count)*Math.PI*2;
-      const spd=Phaser.Math.Between(speedMin,speedMax);
-      p.vx=Math.cos(angle)*spd; p.vy=Math.sin(angle)*spd;
+      const a=(i/count)*Math.PI*2;
+      const s=Phaser.Math.Between(sMin,sMax);
+      p.vx=Math.cos(a)*s; p.vy=Math.sin(a)*s;
       p.life=1.0;
       p.setTint(colors[i%colors.length]);
       p.setScale(Phaser.Math.Between(1,3));
     }
   }
-
   getPooledParticle(){
     for(const p of this.particles.getChildren()) if(!p.active) return p;
     return null;
   }
 
-  // ── Update ────────────────────────────────────────────────────────────────────
-  update(time, delta){
-    if(!this.alive) return;
-    const dt = delta/1000;
+  // ── Obstacle + coin spawning ───────────────────────────────────────────────
+  // worldX = how far from the player's start position
+  worldToScreen(worldX){ return PLAYER_X + (worldX - this.distTraveled); }
 
-    // Animate coins (bob)
+  spawnCluster(worldX){
+    const types=this.lvl.types;
+    const pick=types[Math.floor(Math.random()*types.length)];
+    const sx=this.worldToScreen(worldX);
+
+    if(pick==='barrier')        this.doBarrier(sx, worldX);
+    else if(pick==='spike')     this.doSpikes(sx, worldX);
+    else if(pick==='moving')    this.doMoving(sx, worldX);
+    else if(pick==='gauntlet')  this.doGauntlet(sx, worldX);
+  }
+
+  doBarrier(sx, worldX){
+    const gapH=this.lvl.gap;
+    const gapY=Phaser.Math.Between(TUNNEL_TOP+24, TUNNEL_BOTTOM-gapH-24);
+    const bh=24;
+    for(let y=TUNNEL_TOP;y<gapY;y+=bh){
+      const b=this.add.image(sx,y+bh/2,'block').setDepth(6);
+      b.obstacleType='barrier'; this.obstacles.add(b);
+    }
+    for(let y=gapY+gapH;y<TUNNEL_BOTTOM;y+=bh){
+      const b=this.add.image(sx,y+bh/2,'block').setDepth(6);
+      b.obstacleType='barrier'; this.obstacles.add(b);
+    }
+    // Coin safely in centre of gap — always reachable
+    this.placeCoin(sx-40, gapY+gapH/2, worldX-40);
+  }
+
+  doSpikes(sx, worldX){
+    const maxTop=clamp(1+Math.floor(this.levelIndex*0.6),1,4);
+    const numTop=Phaser.Math.Between(1,maxTop);
+    const addBot=this.levelIndex>=2 && Math.random()<0.5;
+    const numBot=addBot ? Phaser.Math.Between(1,clamp(1+Math.floor(this.levelIndex*0.35),1,3)) : 0;
+    const sp=18;
+
+    for(let i=0;i<numTop;i++){
+      const s=this.add.image(sx+i*sp,TUNNEL_TOP+6,'spike').setDepth(6);
+      s.obstacleType='spike'; this.obstacles.add(s);
+    }
+    for(let i=0;i<numBot;i++){
+      const s=this.add.image(sx+i*sp,TUNNEL_BOTTOM-6,'spike_up').setDepth(6);
+      s.obstacleType='spike'; this.obstacles.add(s);
+    }
+
+    // Coin centred in the tunnel, 30px before the spike cluster
+    // If both top and bottom spikes: coin exactly in centre
+    const coinY = H/2;
+    this.placeCoin(sx-35, coinY, worldX-35);
+  }
+
+  doMoving(sx, worldX){
+    const b=this.add.image(sx,H/2,'block').setScale(1.6).setDepth(6);
+    b.obstacleType='moving';
+    b.moveSpeed=lerp(60,170,this.levelIndex/7)*(Math.random()>0.5?1:-1);
+    b.minY=TUNNEL_TOP+24; b.maxY=TUNNEL_BOTTOM-24;
+    this.obstacles.add(b);
+
+    // Coin 70px before the block at a height the block never reaches
+    // Safe zone = midpoint of tunnel (block oscillates ±120 from centre)
+    const safeY = Math.random()>0.5 ? TUNNEL_TOP+38 : TUNNEL_BOTTOM-38;
+    this.placeCoin(sx-70, safeY, worldX-70);
+  }
+
+  doGauntlet(sx, worldX){
+    this.doSpikes(sx, worldX);
+    this.doBarrier(sx+90, worldX+90);
+  }
+
+  // Place a coin only if the position is in open space (away from obstacles)
+  placeCoin(sx, sy, worldX){
+    // Clamp to tunnel interior with margin
+    sy=clamp(sy, TUNNEL_TOP+22, TUNNEL_BOTTOM-22);
+    // Check distance to all existing obstacle positions
+    for(const obs of this.obstacles.getChildren()){
+      const dx=Math.abs(obs.x-sx), dy=Math.abs(obs.y-sy);
+      const ow=obs.displayWidth/2+16, oh=obs.displayHeight/2+16;
+      if(dx<ow && dy<oh) return; // too close to an obstacle, skip
+    }
+    const c=this.add.image(sx,sy,'coin').setDepth(7).setScale(1.5);
+    c.bobOffset=Math.random()*Math.PI*2;
+    c.worldX=worldX; // track world position for culling
+    this.coins.add(c);
+  }
+
+  // ── Update ─────────────────────────────────────────────────────────────────
+  update(time,delta){
+    if(!this.alive) return;
+    const dt=delta/1000;
+
+    // Coin bob animation (always, even during intro)
     this.coins.getChildren().forEach(c=>{
-      c.y += Math.sin(time*0.003 + c.bobOffset)*0.5;
-      c.setScale(1.3 + Math.sin(time*0.004 + c.bobOffset)*0.1);
+      c.y += Math.sin(time*0.003+c.bobOffset)*0.4;
+      c.setScale(1.4+Math.sin(time*0.004+c.bobOffset)*0.1);
     });
 
     if(!this.gameStarted) return;
 
-    this.levelElapsed += dt;
-    this.flipCooldown = Math.max(0, this.flipCooldown-dt);
+    this.flipCooldown=Math.max(0,this.flipCooldown-dt);
 
-    // Speed ramp within level
-    const t = clamp(this.levelElapsed/this.lvl.duration,0,1);
-    this.speed = lerp(this.lvl.startSpeed, this.lvl.endSpeed, t);
+    // Speed ramp over level distance
+    const prog=clamp(this.distTraveled/this.lvl.distance,0,1);
+    this.speed=lerp(this.lvl.startSpeed,this.lvl.endSpeed,prog);
 
-    // Score = distance + coin bonus (already added on collect)
-    this.distTraveled += this.speed*dt;
-    this.levelScore = Math.floor(this.distTraveled/10);
+    this.distTraveled+=this.speed*dt;
+    this.levelScore=Math.floor(this.distTraveled/8);
     this.scoreTxt.setText(`${this.totalScore+this.levelScore}`);
 
     // Physics
-    this.vy += GRAVITY_FORCE*this.gravDir*dt;
-    this.vy = clamp(this.vy,-700,700);
-    this.player.y += this.vy*dt;
-    this.player.setRotation(clamp(this.vy*0.0008,-0.3,0.3));
+    this.vy+=GRAVITY_FORCE*this.gravDir*dt;
+    this.vy=clamp(this.vy,-720,720);
+    this.player.y+=this.vy*dt;
+    this.player.setRotation(clamp(this.vy*0.0007,-0.35,0.35));
 
     // Trail
-    this.trailHistory.unshift({x:this.player.x,y:this.player.y});
-    this.trailHistory = this.trailHistory.slice(0,6);
-    this.trail.forEach((t2,i)=>{
-      const h=this.trailHistory[i]||this.trailHistory[this.trailHistory.length-1];
-      t2.x=h.x; t2.y=h.y; t2.setRotation(this.player.rotation);
+    this.trailHist.unshift({x:this.player.x,y:this.player.y});
+    this.trailHist=this.trailHist.slice(0,6);
+    this.trail.forEach((t,i)=>{
+      const h=this.trailHist[i]||this.trailHist[this.trailHist.length-1];
+      t.x=h.x; t.y=h.y; t.setRotation(this.player.rotation);
     });
 
     // Wall collision
@@ -477,16 +483,14 @@ class GameScene extends Phaser.Scene {
 
     // Stars
     this.stars.getChildren().forEach(s=>{
-      s.x -= this.speed*dt*s.scrollX;
-      if(s.x<-2) s.x=W+2;
+      s.x-=this.speed*dt*s.scrollX; if(s.x<-2) s.x=W+2;
     });
 
     // Obstacles
-    const obsList = this.obstacles.getChildren().slice();
-    for(const obs of obsList){
-      obs.x -= this.speed*dt;
+    for(const obs of this.obstacles.getChildren().slice()){
+      obs.x-=this.speed*dt;
       if(obs.obstacleType==='moving'){
-        obs.y += obs.moveSpeed*dt;
+        obs.y+=obs.moveSpeed*dt;
         if(obs.y<obs.minY||obs.y>obs.maxY) obs.moveSpeed*=-1;
       }
       if(this.aabb(this.player,obs)){ this.die(); return; }
@@ -494,145 +498,130 @@ class GameScene extends Phaser.Scene {
     }
 
     // Coins
-    const coinList = this.coins.getChildren().slice();
-    for(const c of coinList){
-      c.x -= this.speed*dt;
+    for(const c of this.coins.getChildren().slice()){
+      c.x-=this.speed*dt;
       if(Phaser.Math.Distance.Between(this.player.x,this.player.y,c.x,c.y)<22){
         this.collectCoin(c);
       }
       if(c.x<-30) this.coins.remove(c,true,true);
     }
 
-    // Spawn obstacles
-    const thresh = this.distTraveled+W+150;
-    if(thresh > this.nextObstacleX){
-      this.spawnObstacle(this.nextObstacleX - this.distTraveled + W);
-      this.nextObstacleX += Phaser.Math.Between(this.lvl.spacing*0.85, this.lvl.spacing*1.2);
+    // Spawn obstacles (stop 450px before finish so last stretch is clear)
+    const clearBefore=this.lvl.distance-450;
+    if(this.distTraveled+400 < clearBefore){
+      const spawnWorldX=this.distTraveled+(W-PLAYER_X)+100;
+      if(spawnWorldX >= this.nextObstacleWorldX && this.nextObstacleWorldX < clearBefore){
+        this.spawnCluster(this.nextObstacleWorldX);
+        const spacing=this.lvl.spacing;
+        this.nextObstacleWorldX+=Phaser.Math.Between(spacing*0.85,spacing*1.18);
+      }
     }
 
     // Particles
     this.particles.getChildren().forEach(p=>{
       if(!p.active) return;
       p.x+=p.vx*dt; p.y+=p.vy*dt;
-      p.vx*=0.92; p.vy*=0.92;
+      p.vx*=0.91; p.vy*=0.91;
       p.life-=dt*2.5; p.setAlpha(Math.max(0,p.life));
       if(p.life<=0) p.setActive(false).setVisible(false);
     });
 
     // Camera shake
     if(this.cameraShake>0){
-      this.cameraShake-=dt*2;
+      this.cameraShake-=dt*2.2;
       const mag=this.cameraShake*6;
       this.cameras.main.setScroll((Math.random()-0.5)*mag,(Math.random()-0.5)*mag);
     } else this.cameras.main.setScroll(0,0);
 
     this.redrawWalls(this.distTraveled);
-    this.updateHUD();
-
-    // Level complete
-    if(this.levelElapsed>=this.lvl.duration) this.levelComplete();
+    this.updateHUD(prog);
+    this.updateFinishLine();
   }
 
   collectCoin(c){
     this.coinsCollected++;
-    this.levelScore += 100;
-    this.coinTxt.setText(`⬡ ${this.coinsCollected}`);
-    // Gold particle burst
-    this.emitParticles(c.x,c.y,[0xffcc00,0xffee44,0xffffff],12,80,140);
-    // Flash coin text
-    this.tweens.add({targets:this.coinTxt,scaleX:1.4,scaleY:1.4,duration:100,yoyo:true});
+    this.levelScore+=100;
+    this.coinTxt.setText(`\u25c6 ${this.coinsCollected}`);
+    this.emitParticles(c.x,c.y,[0xffdd00,0xffee66,0xffffff],14,70,150);
+    this.tweens.add({targets:this.coinTxt,scaleX:1.5,scaleY:1.5,duration:90,yoyo:true});
     this.coins.remove(c,true,true);
   }
 
   aabb(a,b){
-    const aw=a.displayWidth*0.55,ah=a.displayHeight*0.55;
-    const bw=b.displayWidth*0.60,bh=b.displayHeight*0.60;
-    return Math.abs(a.x-b.x)<(aw+bw)/2 && Math.abs(a.y-b.y)<(ah+bh)/2;
+    const aw=a.displayWidth*0.52,ah=a.displayHeight*0.52;
+    const bw=b.displayWidth*0.58,bh=b.displayHeight*0.58;
+    return Math.abs(a.x-b.x)<(aw+bw)/2&&Math.abs(a.y-b.y)<(ah+bh)/2;
   }
 
-  updateHUD(){
-    // Timer bar (top of screen, under wall)
-    const g=this.timerGfx; g.clear();
-    const frac = clamp(this.levelElapsed/this.lvl.duration,0,1);
-    const barW = (W-20)*frac;
-    g.fillStyle(0x00ff88,0.5); g.fillRect(10,TUNNEL_TOP+3,barW,4);
-    g.fillStyle(0xffffff,0.2); g.fillRect(10,TUNNEL_TOP+3,barW,1);
-
-    // Speed bar (bottom)
-    const sg=this.speedGfx; sg.clear();
-    const st=clamp((this.speed-this.lvl.startSpeed)/(this.lvl.endSpeed-this.lvl.startSpeed+1),0,1);
-    if(st>0.01){
-      const col=Phaser.Display.Color.Interpolate.ColorWithColor(
-        Phaser.Display.Color.ValueToColor(0x0088ff),
-        Phaser.Display.Color.ValueToColor(0xff4400),100,Math.floor(st*100)
-      );
-      sg.fillStyle(Phaser.Display.Color.GetColor(col.r,col.g,col.b),0.55);
-      sg.fillRect(10,H-12,(W-20)*st,3);
+  updateHUD(prog){
+    // Progress bar (top of tunnel)
+    const g=this.progGfx; g.clear();
+    const bw=(W-20)*clamp(prog,0,1);
+    if(bw>1){
+      g.fillStyle(0x00ff88,0.5); g.fillRect(10,TUNNEL_TOP+3,bw,4);
+      g.fillStyle(0xffffff,0.2); g.fillRect(10,TUNNEL_TOP+3,bw,1);
     }
+    // Finish flag icon on bar
+    g.fillStyle(0xffff00,0.9);
+    g.fillRect(W-14,TUNNEL_TOP+2,6,6);
   }
 
-  // ── Level complete ────────────────────────────────────────────────────────────
-  levelComplete(){
-    if(!this.alive) return;
-    this.alive = false;
-    this.cameras.main.flash(300,0,255,100,false);
+  // ── Level complete ──────────────────────────────────────────────────────────
+  completeLEVEL(){
+    if(this.levelDone||!this.alive) return;
+    this.levelDone=true;
+    this.alive=false;
 
-    // Celebration burst
-    for(let i=0;i<4;i++){
-      this.time.delayedCall(i*120, ()=>{
+    this.cameras.main.flash(350,50,255,100,false);
+    for(let i=0;i<5;i++){
+      this.time.delayedCall(i*110,()=>{
         this.emitParticles(
-          Phaser.Math.Between(80,W-80), H/2,
-          [0xffcc00,0x00ffcc,0xff44ff,0xffffff], 16, 100, 220
+          Phaser.Math.Between(60,W-60),H/2,
+          [0xffdd00,0x00ffcc,0xff44ff,0xffffff],18,90,230
         );
       });
     }
 
-    const finalScore = this.totalScore + this.levelScore;
-    const best = parseInt(localStorage.getItem('gf_best')||'0');
-    if(finalScore>best) localStorage.setItem('gf_best', finalScore);
-    const bestLevel = parseInt(localStorage.getItem('gf_level')||'1');
-    if(this.levelIndex+1 > bestLevel) localStorage.setItem('gf_level', this.levelIndex+1);
+    const finalScore=this.totalScore+this.levelScore;
+    const best=parseInt(localStorage.getItem('gf_best')||'0');
+    if(finalScore>best) localStorage.setItem('gf_best',finalScore);
+    const bLvl=parseInt(localStorage.getItem('gf_level')||'1');
+    if(this.levelIndex+1>bLvl) localStorage.setItem('gf_level',this.levelIndex+1);
 
-    this.time.delayedCall(800, ()=>{
+    this.time.delayedCall(900,()=>{
       this.scene.start('LevelComplete',{
-        levelIndex:   this.levelIndex,
-        coinsCollected: this.coinsCollected,
-        totalCoins:   this.lvl.coins,
-        levelScore:   this.levelScore,
-        totalScore:   finalScore,
-        isLastLevel:  this.levelIndex >= LEVELS.length-1
+        levelIndex:this.levelIndex,
+        coinsCollected:this.coinsCollected,
+        totalCoins:this.lvl.coins,
+        levelScore:this.levelScore,
+        totalScore:finalScore,
+        isLastLevel:this.levelIndex>=LEVELS.length-1
       });
     });
   }
 
-  // ── Death ─────────────────────────────────────────────────────────────────────
+  // ── Death ───────────────────────────────────────────────────────────────────
   die(){
     if(!this.alive) return;
     this.alive=false;
-    this.cameras.main.shake(400,0.018);
-    this.cameras.main.flash(200,255,50,50,false);
-
-    for(let i=0;i<32;i++){
+    this.cameras.main.shake(420,0.02);
+    this.cameras.main.flash(220,255,40,40,false);
+    for(let i=0;i<34;i++){
       const p=this.add.image(this.player.x,this.player.y,'particle').setDepth(20).setScale(Phaser.Math.Between(1,4));
-      const angle=Math.random()*Math.PI*2;
-      const spd=Phaser.Math.Between(80,280);
-      p.vx=Math.cos(angle)*spd; p.vy=Math.sin(angle)*spd; p.life=1;
-      p.setTint(Math.random()>0.5?0xff4400:0xffff00);
-      this.tweens.add({targets:p,alpha:0,scale:0,duration:600+Math.random()*400,onComplete:()=>p.destroy()});
+      const a=Math.random()*Math.PI*2, s=Phaser.Math.Between(90,290);
+      p.vx=Math.cos(a)*s; p.vy=Math.sin(a)*s; p.life=1;
+      p.setTint(Math.random()>0.5?0xff3300:0xffee00);
+      this.tweens.add({targets:p,alpha:0,scale:0,duration:550+Math.random()*450,onComplete:()=>p.destroy()});
     }
     this.player.setVisible(false);
     this.trail.forEach(t=>t.setVisible(false));
 
-    const finalScore = this.totalScore + this.levelScore;
-    const best = parseInt(localStorage.getItem('gf_best')||'0');
-    if(finalScore>best) localStorage.setItem('gf_best', finalScore);
+    const finalScore=this.totalScore+this.levelScore;
+    const best=parseInt(localStorage.getItem('gf_best')||'0');
+    if(finalScore>best) localStorage.setItem('gf_best',finalScore);
 
-    this.time.delayedCall(900, ()=>{
-      this.scene.start('Death',{
-        levelIndex: this.levelIndex,
-        score:      finalScore,
-        coinsCollected: this.coinsCollected
-      });
+    this.time.delayedCall(950,()=>{
+      this.scene.start('Death',{levelIndex:this.levelIndex,score:finalScore,coinsCollected:this.coinsCollected});
     });
   }
 }
@@ -640,21 +629,14 @@ class GameScene extends Phaser.Scene {
 // ── LevelCompleteScene ────────────────────────────────────────────────────────
 class LevelCompleteScene extends Phaser.Scene {
   constructor(){ super('LevelComplete'); }
-
-  init(data){
-    this.levelIndex    = data.levelIndex;
-    this.coinsCollected= data.coinsCollected;
-    this.totalCoins    = data.totalCoins;
-    this.levelScore    = data.levelScore;
-    this.totalScore    = data.totalScore;
-    this.isLastLevel   = data.isLastLevel;
+  init(d){
+    this.levelIndex=d.levelIndex; this.coinsCollected=d.coinsCollected;
+    this.totalCoins=d.totalCoins; this.levelScore=d.levelScore;
+    this.totalScore=d.totalScore; this.isLastLevel=d.isLastLevel;
   }
-
   create(){
     this.cameras.main.setBackgroundColor('#000011');
     const cx=W/2;
-
-    // Tunnel lines bg
     const g=this.add.graphics();
     g.fillStyle(0x000922); g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
     g.lineStyle(3,0x00ff88,1);
@@ -662,59 +644,55 @@ class LevelCompleteScene extends Phaser.Scene {
     g.beginPath(); g.moveTo(0,TUNNEL_BOTTOM); g.lineTo(W,TUNNEL_BOTTOM); g.strokePath();
 
     const best=parseInt(localStorage.getItem('gf_best')||'0');
-    const nextLabel = this.isLastLevel ? 'YOU WIN!' : `LEVEL ${this.levelIndex+2}`;
+    const cont=this.add.container(0,-H*0.3);
 
-    // Slide in container
-    const container=this.add.container(0,-H*0.3);
-
-    container.add(this.add.text(cx,H*0.18,'LEVEL',{fontFamily:'"Press Start 2P"',fontSize:'20px',color:'#888888'}).setOrigin(0.5));
-    container.add(this.add.text(cx,H*0.25,`${this.levelIndex+1} COMPLETE`,{
+    cont.add(this.add.text(cx,H*0.16,'LEVEL',{fontFamily:'"Press Start 2P"',fontSize:'18px',color:'#888888'}).setOrigin(0.5));
+    cont.add(this.add.text(cx,H*0.23,`${this.levelIndex+1} COMPLETE!`,{
       fontFamily:'"Press Start 2P"',fontSize:'26px',color:'#00ff88',
       shadow:{x:3,y:3,color:'#006633',blur:0,fill:true}
     }).setOrigin(0.5));
 
-    // Score this level
-    container.add(this.add.text(cx,H*0.37,'LEVEL SCORE',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5));
-    container.add(this.add.text(cx,H*0.43,`${this.levelScore}`,{fontFamily:'"Press Start 2P"',fontSize:'22px',color:'#00ffff'}).setOrigin(0.5));
+    cont.add(this.add.text(cx,H*0.35,'LEVEL SCORE',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5));
+    cont.add(this.add.text(cx,H*0.41,`${this.levelScore}`,{fontFamily:'"Press Start 2P"',fontSize:'24px',color:'#00ffff'}).setOrigin(0.5));
 
-    // Coins
-    container.add(this.add.text(cx,H*0.52,`⬡ COINS: ${this.coinsCollected}/${this.totalCoins}`,{
-      fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffcc00'
+    cont.add(this.add.text(cx,H*0.50,`\u25c6 COINS  ${this.coinsCollected} / ${this.totalCoins}`,{
+      fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffdd00'
     }).setOrigin(0.5));
 
-    // Total score
-    container.add(this.add.text(cx,H*0.61,'TOTAL SCORE',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5));
-    const isNewBest=this.totalScore>=best;
-    container.add(this.add.text(cx,H*0.67,`${this.totalScore}`,{
-      fontFamily:'"Press Start 2P"',fontSize:'22px',color:isNewBest?'#ffff00':'#ffffff'
+    const coinBonus=this.coinsCollected*100;
+    if(coinBonus>0)
+      cont.add(this.add.text(cx,H*0.57,`+${coinBonus} COIN BONUS`,{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ffaa00'}).setOrigin(0.5));
+
+    cont.add(this.add.text(cx,H*0.65,'TOTAL SCORE',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5));
+    const isNew=this.totalScore>=best&&this.totalScore>0;
+    cont.add(this.add.text(cx,H*0.71,`${this.totalScore}`,{
+      fontFamily:'"Press Start 2P"',fontSize:'24px',color:isNew?'#ffff00':'#ffffff'
     }).setOrigin(0.5));
-    if(isNewBest&&this.totalScore>0)
-      container.add(this.add.text(cx,H*0.74,'★ NEW BEST! ★',{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffff00'}).setOrigin(0.5));
+    if(isNew)
+      cont.add(this.add.text(cx,H*0.78,'\u2605 NEW BEST! \u2605',{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffff00'}).setOrigin(0.5));
 
-    this.add.existing(container);
-    this.tweens.add({targets:container,y:0,duration:500,ease:'Back.easeOut'});
+    this.add.existing(cont);
+    this.tweens.add({targets:cont,y:0,duration:480,ease:'Back.easeOut'});
 
-    // TAP TO CONTINUE
-    const tapLabel = this.isLastLevel ? 'TAP TO PLAY AGAIN' : `TAP FOR ${nextLabel}`;
-    const tap=this.add.text(cx,H*0.86,tapLabel,{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffffff'}).setOrigin(0.5).setDepth(10);
-    this.time.addEvent({delay:600,loop:true,callback:()=>tap.setVisible(!tap.visible)});
+    const label=this.isLastLevel?'TAP TO PLAY AGAIN':`TAP FOR LEVEL ${this.levelIndex+2}`;
+    const tap=this.add.text(cx,H*0.88,label,{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffffff'}).setOrigin(0.5).setDepth(10);
+    this.time.addEvent({delay:580,loop:true,callback:()=>tap.setVisible(!tap.visible)});
 
-    // Confetti
-    for(let i=0;i<60;i++){
-      this.time.delayedCall(i*40,()=>{
-        const px=Phaser.Math.Between(20,W-20), py=Phaser.Math.Between(TUNNEL_TOP+10,TUNNEL_BOTTOM-10);
-        const p=this.add.image(px,py,'particle').setDepth(5)
-          .setScale(Phaser.Math.Between(1,3))
-          .setTint([0xffcc00,0x00ffcc,0xff44ff,0x44ffff,0xffffff][Math.floor(Math.random()*5)]);
-        this.tweens.add({targets:p,y:py+Phaser.Math.Between(30,80),alpha:0,duration:1000,onComplete:()=>p.destroy()});
+    // Confetti burst
+    for(let i=0;i<55;i++){
+      this.time.delayedCall(i*45,()=>{
+        const p=this.add.image(Phaser.Math.Between(20,W-20),Phaser.Math.Between(TUNNEL_TOP+10,TUNNEL_BOTTOM-10),'particle')
+          .setDepth(5).setScale(Phaser.Math.Between(1,3))
+          .setTint([0xffdd00,0x00ffcc,0xff44ff,0x44ffff,0xffffff][Math.floor(Math.random()*5)]);
+        this.tweens.add({targets:p,y:p.y+Phaser.Math.Between(25,70),alpha:0,duration:900,onComplete:()=>p.destroy()});
       });
     }
 
     this.time.delayedCall(700,()=>{
       const next=()=>{
-        const nextIndex = this.isLastLevel ? 0 : this.levelIndex+1;
-        const nextScore = this.isLastLevel ? 0 : this.totalScore;
-        this.scene.start('Game',{levelIndex:nextIndex, totalScore:nextScore});
+        const ni=this.isLastLevel?0:this.levelIndex+1;
+        const ns=this.isLastLevel?0:this.totalScore;
+        this.scene.start('Game',{levelIndex:ni,totalScore:ns});
       };
       this.input.once('pointerdown',next);
       this.input.keyboard.once('keydown',next);
@@ -725,77 +703,55 @@ class LevelCompleteScene extends Phaser.Scene {
 // ── DeathScene ────────────────────────────────────────────────────────────────
 class DeathScene extends Phaser.Scene {
   constructor(){ super('Death'); }
-
-  init(data){
-    this.levelIndex=data.levelIndex||0;
-    this.finalScore=data.score||0;
-    this.coinsCollected=data.coinsCollected||0;
-  }
-
+  init(d){ this.levelIndex=d.levelIndex||0; this.finalScore=d.score||0; this.coins=d.coinsCollected||0; }
   create(){
     this.cameras.main.setBackgroundColor('#000011');
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     const cx=W/2;
-
     const g=this.add.graphics();
     g.fillStyle(0x000922); g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
     g.lineStyle(3,0x0088ff,1);
     g.beginPath(); g.moveTo(0,TUNNEL_TOP); g.lineTo(W,TUNNEL_TOP); g.strokePath();
     g.beginPath(); g.moveTo(0,TUNNEL_BOTTOM); g.lineTo(W,TUNNEL_BOTTOM); g.strokePath();
+    this.add.rectangle(cx,H/2,W,H,0x000000,0.58);
 
-    this.add.rectangle(cx,H/2,W,H,0x000000,0.55);
-
-    this.add.text(cx,H*0.18,'GAME',{fontFamily:'"Press Start 2P"',fontSize:'32px',color:'#ff4444',
-      shadow:{x:3,y:3,color:'#880000',blur:0,fill:true}}).setOrigin(0.5);
-    this.add.text(cx,H*0.27,'OVER',{fontFamily:'"Press Start 2P"',fontSize:'32px',color:'#ff4444',
-      shadow:{x:3,y:3,color:'#880000',blur:0,fill:true}}).setOrigin(0.5);
-
-    this.add.text(cx,H*0.39,`LEVEL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#ff88ff'}).setOrigin(0.5);
-
-    this.add.text(cx,H*0.47,'SCORE',{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#888888'}).setOrigin(0.5);
+    this.add.text(cx,H*0.17,'GAME',{fontFamily:'"Press Start 2P"',fontSize:'32px',color:'#ff4444',shadow:{x:3,y:3,color:'#880000',blur:0,fill:true}}).setOrigin(0.5);
+    this.add.text(cx,H*0.26,'OVER',{fontFamily:'"Press Start 2P"',fontSize:'32px',color:'#ff4444',shadow:{x:3,y:3,color:'#880000',blur:0,fill:true}}).setOrigin(0.5);
+    this.add.text(cx,H*0.38,`LEVEL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#ff88ff'}).setOrigin(0.5);
+    this.add.text(cx,H*0.46,'SCORE',{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#888888'}).setOrigin(0.5);
     const isNew=this.finalScore>=best&&this.finalScore>0;
-    this.add.text(cx,H*0.53,`${this.finalScore}`,{fontFamily:'"Press Start 2P"',fontSize:'26px',
-      color:isNew?'#ffff00':'#00ffff'}).setOrigin(0.5);
-    if(isNew)
-      this.add.text(cx,H*0.60,'★ NEW BEST! ★',{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffff00'}).setOrigin(0.5);
-    else
-      this.add.text(cx,H*0.60,`BEST: ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(0.5);
+    this.add.text(cx,H*0.52,`${this.finalScore}`,{fontFamily:'"Press Start 2P"',fontSize:'26px',color:isNew?'#ffff00':'#00ffff'}).setOrigin(0.5);
+    if(isNew) this.add.text(cx,H*0.60,'\u2605 NEW BEST! \u2605',{fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffff00'}).setOrigin(0.5);
+    else       this.add.text(cx,H*0.60,`BEST: ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(0.5);
+    this.add.text(cx,H*0.68,`\u25c6 COINS: ${this.coins}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffdd00'}).setOrigin(0.5);
 
-    this.add.text(cx,H*0.68,`⬡ COINS: ${this.coinsCollected}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffcc00'}).setOrigin(0.5);
+    // Divider
+    const dg=this.add.graphics();
+    dg.lineStyle(1,0x333333,1); dg.beginPath(); dg.moveTo(20,H*0.74); dg.lineTo(W-20,H*0.74); dg.strokePath();
 
-    // Retry same level or restart
-    const retryTxt=this.add.text(cx,H*0.77,`RETRY LEVEL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffffff'}).setOrigin(0.5);
-    const restartTxt=this.add.text(cx,H*0.85,'FROM LEVEL 1',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'}).setOrigin(0.5);
+    const retryTxt=this.add.text(cx,H*0.79,`\u25b6 RETRY LEVEL ${this.levelIndex+1}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffffff'}).setOrigin(0.5);
+    this.add.text(cx,H*0.87,'\u25b6 RESTART FROM LVL 1',{fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#666666'}).setOrigin(0.5);
+    this.add.text(cx,H*0.93,'(tap lower button)',{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#333333'}).setOrigin(0.5);
 
-    this.time.addEvent({delay:600,loop:true,callback:()=>retryTxt.setVisible(!retryTxt.visible)});
-
+    this.time.addEvent({delay:580,loop:true,callback:()=>retryTxt.setVisible(!retryTxt.visible)});
     this.time.delayedCall(600,()=>{
       this.input.on('pointerdown',(ptr)=>{
-        // Top half = retry, bottom half = restart
-        if(ptr.y < H*0.82) this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:0});
-        else                this.scene.start('Game',{levelIndex:0,totalScore:0});
+        if(ptr.y<H*0.84) this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:0});
+        else              this.scene.start('Game',{levelIndex:0,totalScore:0});
       });
       this.input.keyboard.once('keydown',()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:0}));
     });
-
-    // Click areas visual hint
-    const hint=this.add.text(cx,H*0.91,'(tap bottom half to restart)',{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#444444'}).setOrigin(0.5);
   }
 }
 
-// ── Phaser config ─────────────────────────────────────────────────────────────
-const config = {
-  type: Phaser.AUTO,
-  width: W, height: H,
-  backgroundColor: '#000011',
-  parent: document.body,
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [BootScene, MenuScene, GameScene, LevelCompleteScene, DeathScene],
-  fps: { target:60, forceSetTimeOut:false },
-  render: { pixelArt:true, antialias:false }
-};
-
-new Phaser.Game(config);
+// ── Config ────────────────────────────────────────────────────────────────────
+new Phaser.Game({
+  type:Phaser.AUTO, width:W, height:H, backgroundColor:'#000011', parent:document.body,
+  scale:{ mode:Phaser.Scale.FIT, autoCenter:Phaser.Scale.CENTER_BOTH },
+  scene:[BootScene,MenuScene,GameScene,LevelCompleteScene,DeathScene],
+  fps:{target:60,forceSetTimeOut:false},
+  render:{pixelArt:true,antialias:false}
+});
 </script>
 </body>
 </html>
