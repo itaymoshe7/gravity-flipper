@@ -208,6 +208,52 @@ class AudioMgr{
 }
 const AUDIO=new AudioMgr();
 
+// ── INPUT singleton — canvas-level touchend + click, bypasses Phaser entirely ─
+// iOS Safari is most reliable with touchend on the canvas element itself.
+const INPUT=(function(){
+  let _cv=null, _handlers=[], _dot=null;
+
+  function _toGame(cx,cy){
+    const r=_cv.getBoundingClientRect();
+    return{x:((cx-r.left)/r.width)*W, y:((cy-r.top)/r.height)*H};
+  }
+  function _dot_show(cx,cy){
+    if(!_dot){
+      _dot=document.createElement('div');
+      _dot.style.cssText='position:fixed;width:26px;height:26px;border-radius:50%;background:rgba(255,255,0,0.85);border:2px solid #fff;pointer-events:none;z-index:99999;transform:translate(-50%,-50%);transition:opacity 0.35s;opacity:0';
+      document.body.appendChild(_dot);
+    }
+    _dot.style.left=cx+'px'; _dot.style.top=cy+'px'; _dot.style.opacity='1';
+    clearTimeout(_dot._t); _dot._t=setTimeout(()=>{_dot.style.opacity='0';},350);
+  }
+  function _fire(pos){
+    const snap=[..._handlers];
+    _handlers=_handlers.filter(h=>!h.once);
+    snap.forEach(h=>h.fn(pos));
+  }
+  function _onTouchEnd(e){
+    e.preventDefault(); e.stopPropagation();
+    const t=e.changedTouches[0];
+    _dot_show(t.clientX,t.clientY);
+    _fire(_toGame(t.clientX,t.clientY));
+  }
+  function _onClick(e){
+    _dot_show(e.clientX,e.clientY);
+    _fire(_toGame(e.clientX,e.clientY));
+  }
+  return{
+    init(canvas){
+      _cv=canvas;
+      canvas.addEventListener('touchend',_onTouchEnd,{passive:false});
+      canvas.addEventListener('click',_onClick);
+    },
+    on(fn){_handlers.push({fn,once:false});},
+    once(fn){_handlers.push({fn,once:true});},
+    off(fn){_handlers=_handlers.filter(h=>h.fn!==fn);},
+    clear(){_handlers=[];}
+  };
+})();
+
 // ── BootScene ─────────────────────────────────────────────────────────────────
 class BootScene extends Phaser.Scene{
   constructor(){super('Boot');}
@@ -287,7 +333,7 @@ class BootScene extends Phaser.Scene{
     g.clear();g.fillStyle(0xffffff);g.fillRect(0,0,2,2);g.generateTexture('star',2,2);
     g.destroy();
   }
-  create(){this.scene.start('Menu');}
+  create(){INPUT.init(this.sys.game.canvas);this.scene.start('Menu');}
 }
 
 // ── MenuScene ─────────────────────────────────────────────────────────────────
@@ -346,18 +392,10 @@ class MenuScene extends Phaser.Scene{
     this.tap=this.add.text(cx,H*0.80,'TAP TO START',{fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffffff'}).setOrigin(0.5);
     this.add.text(cx,H*0.89,'TAP = FLIP GRAVITY',{fontFamily:'"Press Start 2P"',fontSize:'9px',color:'#444444'}).setOrigin(0.5);
 
-    this.input.on('pointerdown',(ptr)=>{
-      // Ignore taps on character boxes
-      if(ptr.y>H*0.26&&ptr.y<H*0.60) return;
-      AUDIO.init(); AUDIO.resume();
-      localStorage.setItem('gf_char',CHARACTERS[this._selIdx].id);
-      this.scene.start('Game',{levelIndex:0,totalScore:0});
-    });
-    this.input.keyboard.once('keydown',()=>{
-      AUDIO.init(); AUDIO.resume();
-      localStorage.setItem('gf_char',CHARACTERS[this._selIdx].id);
-      this.scene.start('Game',{levelIndex:0,totalScore:0});
-    });
+    const startGame=()=>{AUDIO.init();AUDIO.resume();INPUT.clear();localStorage.setItem('gf_char',CHARACTERS[this._selIdx].id);this.scene.start('Game',{levelIndex:0,totalScore:0});};
+    INPUT.on((pos)=>{if(pos.y>H*0.26&&pos.y<H*0.60)return;startGame();});
+    this.events.once('shutdown',()=>INPUT.clear());
+    if(this.input.keyboard)this.input.keyboard.once('keydown',startGame);
   }
 
   _selectChar(i){
@@ -463,10 +501,13 @@ class GameScene extends Phaser.Scene{
   }
 
   _buildInputs(){
-    this.input.on('pointerdown',(ptr)=>{if(ptr.x>W-40&&ptr.y>H-40)return;this._flip();});
-    this.input.keyboard.on('keydown-SPACE',this._flip,this);
-    this.input.keyboard.on('keydown-UP',this._flip,this);
-    this.input.keyboard.on('keydown-M',()=>{const m=AUDIO.toggleMute();this.muteBtn.setText(m?'[M]':'[S]').setColor(m?'#555555':'#00ffcc');});
+    INPUT.on((pos)=>{if(pos.x>W-40&&pos.y>H-40)return;this._flip();});
+    this.events.once('shutdown',()=>INPUT.clear());
+    if(this.input.keyboard){
+      this.input.keyboard.on('keydown-SPACE',this._flip,this);
+      this.input.keyboard.on('keydown-UP',this._flip,this);
+      this.input.keyboard.on('keydown-M',()=>{const m=AUDIO.toggleMute();this.muteBtn.setText(m?'[M]':'[S]').setColor(m?'#555555':'#00ffcc');});
+    }
   }
 
   // ── Level intro + countdown ─────────────────────────────────────────────────
@@ -482,19 +523,14 @@ class GameScene extends Phaser.Scene{
     this.introCont.add([bg,numTxt,themeTxt,hintTxt,coinHint,tapHint]);
     this.time.addEvent({delay:500,loop:true,callback:()=>tapHint.setVisible(!tapHint.visible)});
 
-    let _cdCleanup=()=>{};
     const startCountdown=()=>{
       if(this._countingDown) return;
       this._countingDown=true;
-      _cdCleanup();
+      INPUT.off(startCountdown);
       this.tweens.add({targets:this.introCont,alpha:0,duration:250,onComplete:()=>this.introCont.destroy()});
       this._runCountdown();
     };
-    const onT=(e)=>{e.preventDefault();startCountdown();};
-    document.addEventListener('touchstart',onT,{passive:false});
-    document.addEventListener('click',startCountdown);
-    _cdCleanup=()=>{document.removeEventListener('touchstart',onT);document.removeEventListener('click',startCountdown);};
-    this.events.once('shutdown',_cdCleanup);
+    INPUT.once(()=>startCountdown());
     if(this.input.keyboard)this.input.keyboard.once('keydown',startCountdown);
     this.time.delayedCall(4000,startCountdown);
   }
@@ -873,13 +909,10 @@ class LevelCompleteScene extends Phaser.Scene{
       this.tweens.add({targets:p,y:p.y+Phaser.Math.Between(25,70),alpha:0,duration:900,onComplete:()=>p.destroy()});
     });
     this.time.delayedCall(700,()=>{
-      let going=false;let cleanup=()=>{};
-      const next=()=>{if(going)return;going=true;cleanup();AUDIO.stopMusic();const ni=this.isLastLevel?0:this.levelIndex+1,ns=this.isLastLevel?0:this.totalScore;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:ni,totalScore:ns}));};
-      const onT=(e)=>{e.preventDefault();next();};
-      document.addEventListener('touchstart',onT,{passive:false});
-      document.addEventListener('click',next);
-      cleanup=()=>{document.removeEventListener('touchstart',onT);document.removeEventListener('click',next);};
-      this.events.once('shutdown',cleanup);
+      let going=false;
+      const next=()=>{if(going)return;going=true;INPUT.clear();AUDIO.stopMusic();const ni=this.isLastLevel?0:this.levelIndex+1,ns=this.isLastLevel?0:this.totalScore;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:ni,totalScore:ns}));};
+      INPUT.once(next);
+      this.events.once('shutdown',()=>INPUT.clear());
       if(this.input.keyboard){this.input.keyboard.once('keydown-SPACE',next);this.input.keyboard.once('keydown-ENTER',next);}
     });
   }
@@ -915,13 +948,10 @@ class LevelFailedScene extends Phaser.Scene{
     this.time.addEvent({delay:550,loop:true,callback:()=>tryBtn.setVisible(!tryBtn.visible)});
     this.add.text(cx,H*0.91,'level score is lost',{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#333333'}).setOrigin(0.5).setDepth(20);
     this.time.delayedCall(600,()=>{
-      let going=false;let cleanup=()=>{};
-      const go=()=>{if(going)return;going=true;cleanup();this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));};
-      const onT=(e)=>{e.preventDefault();go();};
-      document.addEventListener('touchstart',onT,{passive:false});
-      document.addEventListener('click',go);
-      cleanup=()=>{document.removeEventListener('touchstart',onT);document.removeEventListener('click',go);};
-      this.events.once('shutdown',cleanup);
+      let going=false;
+      const go=()=>{if(going)return;going=true;INPUT.clear();this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));};
+      INPUT.once(go);
+      this.events.once('shutdown',()=>INPUT.clear());
       if(this.input.keyboard){this.input.keyboard.on('keydown-SPACE',go);this.input.keyboard.on('keydown-ENTER',go);}
     });
   }
@@ -957,19 +987,14 @@ class DeathScene extends Phaser.Scene{
     this.add.text(cx,H*0.93,'bottom half = restart from lvl 1',{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#333333'}).setOrigin(0.5);
     this.time.addEvent({delay:580,loop:true,callback:()=>retryTxt.setVisible(!retryTxt.visible)});
     this.time.delayedCall(600,()=>{
-      let going=false;let cleanup=()=>{};
-      const go=(lvlIdx)=>{if(going)return;going=true;cleanup();this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:lvlIdx,totalScore:0}));};
-      const getGameY=(clientY)=>{const cv=this.sys.game.canvas,r=cv.getBoundingClientRect();return((clientY-r.top)/r.height)*H;};
-      const onT=(e)=>{e.preventDefault();const y=getGameY(e.touches[0].clientY);go(y<H*0.84?this.levelIndex:0);};
-      const onC=(e)=>{const y=getGameY(e.clientY);go(y<H*0.84?this.levelIndex:0);};
-      document.addEventListener('touchstart',onT,{passive:false});
-      document.addEventListener('click',onC);
-      cleanup=()=>{document.removeEventListener('touchstart',onT);document.removeEventListener('click',onC);};
-      this.events.once('shutdown',cleanup);
+      let going=false;
+      const go=(pos)=>{if(going)return;going=true;INPUT.clear();const li=(pos&&pos.y<H*0.84)?this.levelIndex:0;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:li,totalScore:0}));};
+      INPUT.once(go);
+      this.events.once('shutdown',()=>INPUT.clear());
       if(this.input.keyboard){
-        this.input.keyboard.on('keydown-SPACE',()=>go(this.levelIndex));
-        this.input.keyboard.on('keydown-ENTER',()=>go(this.levelIndex));
-        this.input.keyboard.on('keydown-R',()=>go(0));
+        this.input.keyboard.on('keydown-SPACE',()=>go({y:0}));
+        this.input.keyboard.on('keydown-ENTER',()=>go({y:0}));
+        this.input.keyboard.on('keydown-R',()=>go({y:H}));
       }
     });
   }
