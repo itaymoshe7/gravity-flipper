@@ -233,18 +233,17 @@ class GameScene extends Phaser.Scene {
 
   // ── Finish line ────────────────────────────────────────────────────────────
   buildFinishLine(){
-    this.finishGfx   = this.add.graphics().setDepth(8);
-    this.finishTxt   = this.add.text(0, TUNNEL_TOP-22,'FINISH',{
+    this.finishGfx          = this.add.graphics().setDepth(8);
+    this.finishTxt          = this.add.text(0, TUNNEL_TOP-22,'FINISH',{
       fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'
     }).setOrigin(0.5,1).setDepth(9);
-    this.finishPulse      = 0;
-    this.blockedCooldown  = 0;   // seconds before player can be bounced again
+    this.finishPulse        = 0;
     this.safetyCoinsSpawned = false;
 
-    // "COLLECT MORE COINS!" message — hidden until needed
-    this.blockMsg = this.add.text(W/2, H/2 - 60,'COLLECT MORE COINS!',{
-      fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#ff4444',
-      shadow:{x:2,y:2,color:'#880000',blur:0,fill:true}
+    // "FINISH LINE UNLOCKED!" feedback message
+    this.unlockedMsg = this.add.text(W/2, H/2 - 60,'FINISH LINE UNLOCKED!',{
+      fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#00ff88',
+      shadow:{x:2,y:2,color:'#005522',blur:0,fill:true}
     }).setOrigin(0.5).setDepth(25).setAlpha(0);
   }
 
@@ -252,11 +251,10 @@ class GameScene extends Phaser.Scene {
     const sx = PLAYER_X + (this.lvl.distance - this.distTraveled);
     this.finishTxt.x = sx;
 
-    // Fade blockMsg
-    if(this.blockMsg.alpha > 0) this.blockMsg.setAlpha(Math.max(0, this.blockMsg.alpha - 0.03));
-    if(this.blockedCooldown > 0) this.blockedCooldown -= 1/60;
+    // Fade unlock message
+    if(this.unlockedMsg.alpha > 0) this.unlockedMsg.setAlpha(Math.max(0, this.unlockedMsg.alpha - 0.025));
 
-    // Spawn safety coins in final clear stretch (last 350px before finish)
+    // Spawn safety coins in the final clear stretch
     if(!this.safetyCoinsSpawned && this.distTraveled > this.lvl.distance - 600){
       this.safetyCoinsSpawned = true;
       this.spawnSafetyCoins();
@@ -269,7 +267,7 @@ class GameScene extends Phaser.Scene {
     this.finishPulse = (this.finishPulse + 0.08) % (Math.PI*2);
     const pulse = 0.6 + Math.sin(this.finishPulse)*0.4;
 
-    // Colour: red = locked, green→yellow = unlocked
+    // Red = not enough coins, yellow/white = enough
     const lineCol  = locked ? 0xff3333 : 0xffff00;
     const checkCol = locked ? 0xff6666 : 0xffffff;
     const altCol   = locked ? 0xaa0000 : 0xffff00;
@@ -285,40 +283,19 @@ class GameScene extends Phaser.Scene {
     g.lineStyle(16, lineCol, pulse*0.18);
     g.beginPath(); g.moveTo(sx,TUNNEL_TOP); g.lineTo(sx,TUNNEL_BOTTOM); g.strokePath();
 
-    // Player reaches finish line
-    if(sx <= PLAYER_X + 8 && !this.levelDone){
-      if(locked){
-        // Block: bounce player back and flash message
-        if(this.blockedCooldown <= 0){
-          this.blockedCooldown = 0.4;
-          this.vy = -this.vy * 0.7;                    // reverse vertical velocity
-          this.distTraveled -= 18;                     // nudge back slightly
-          this.cameras.main.flash(120, 255, 0, 0, false);
-          this.blockMsg.setAlpha(1);
-          // Shake coin counter
-          this.tweens.add({targets:this.coinTxt, x:this.coinTxt.x+5, duration:40, yoyo:true, repeat:4,
-            onComplete:()=>this.coinTxt.setX(10)});
-          // Emit red sparks off the finish line
-          this.emitParticles(sx, this.player.y, [0xff3333,0xff8888,0xffffff], 10, 40, 120);
-        }
-      } else {
-        this.completeLEVEL();
-      }
-    }
+    // Player crosses finish line — always let them through
+    if(sx <= PLAYER_X + 8 && !this.levelDone) this.completeLEVEL();
   }
 
-  // Place a handful of coins in the clear zone just before the finish line
+  // 3 coins in the final obstacle-free stretch as a last-chance buffer
   spawnSafetyCoins(){
-    const needed = this.lvl.required - this.coinsCollected;
-    // Always place 3 safety coins regardless, so player has them if needed
     const positions = [
       { wx: this.lvl.distance - 340, sy: H/2 },
-      { wx: this.lvl.distance - 240, sy: TUNNEL_TOP + 50 },
-      { wx: this.lvl.distance - 140, sy: TUNNEL_BOTTOM - 50 },
+      { wx: this.lvl.distance - 230, sy: TUNNEL_TOP + 55 },
+      { wx: this.lvl.distance - 130, sy: TUNNEL_BOTTOM - 55 },
     ];
     for(const pos of positions){
-      const sx = this.worldToScreen(pos.wx);
-      this.placeCoin(sx, pos.sy, pos.wx);
+      this.placeCoin(this.worldToScreen(pos.wx), pos.sy, pos.wx);
     }
   }
 
@@ -595,10 +572,10 @@ class GameScene extends Phaser.Scene {
     this.coinTxt.setColor(met ? '#00ff88' : '#ffdd00');
     this.emitParticles(c.x,c.y,[0xffdd00,0xffee66,0xffffff],14,70,150);
     this.tweens.add({targets:this.coinTxt,scaleX:1.5,scaleY:1.5,duration:90,yoyo:true});
-    // If this coin just met the requirement, flash green
+    // Flash green when requirement is just met
     if(met && this.coinsCollected === req){
       this.cameras.main.flash(120, 0, 255, 100, false);
-      this.blockMsg.setText('FINISH LINE UNLOCKED!').setColor('#00ff88').setAlpha(1);
+      this.unlockedMsg.setAlpha(1);
     }
     this.coins.remove(c,true,true);
   }
@@ -622,39 +599,55 @@ class GameScene extends Phaser.Scene {
     g.fillRect(W-14,TUNNEL_TOP+2,6,6);
   }
 
-  // ── Level complete ──────────────────────────────────────────────────────────
+  // ── Level complete / failed ─────────────────────────────────────────────────
   completeLEVEL(){
     if(this.levelDone||!this.alive) return;
     this.levelDone=true;
     this.alive=false;
 
-    this.cameras.main.flash(350,50,255,100,false);
-    for(let i=0;i<5;i++){
-      this.time.delayedCall(i*110,()=>{
-        this.emitParticles(
-          Phaser.Math.Between(60,W-60),H/2,
-          [0xffdd00,0x00ffcc,0xff44ff,0xffffff],18,90,230
-        );
+    const passed = this.coinsCollected >= this.lvl.required;
+
+    if(passed){
+      this.cameras.main.flash(350,50,255,100,false);
+      for(let i=0;i<5;i++){
+        this.time.delayedCall(i*110,()=>{
+          this.emitParticles(
+            Phaser.Math.Between(60,W-60),H/2,
+            [0xffdd00,0x00ffcc,0xff44ff,0xffffff],18,90,230
+          );
+        });
+      }
+      const finalScore=this.totalScore+this.levelScore;
+      const best=parseInt(localStorage.getItem('gf_best')||'0');
+      if(finalScore>best) localStorage.setItem('gf_best',finalScore);
+      const bLvl=parseInt(localStorage.getItem('gf_level')||'1');
+      if(this.levelIndex+1>bLvl) localStorage.setItem('gf_level',this.levelIndex+1);
+      this.time.delayedCall(900,()=>{
+        this.scene.start('LevelComplete',{
+          levelIndex:    this.levelIndex,
+          coinsCollected:this.coinsCollected,
+          totalCoins:    this.lvl.coins,
+          requiredCoins: this.lvl.required,
+          levelScore:    this.levelScore,
+          totalScore:    this.totalScore+this.levelScore,
+          isLastLevel:   this.levelIndex>=LEVELS.length-1
+        });
+      });
+    } else {
+      // Not enough coins — level failed
+      this.cameras.main.flash(250,255,80,0,false);
+      this.player.setVisible(false);
+      this.trail.forEach(t=>t.setVisible(false));
+      this.time.delayedCall(700,()=>{
+        this.scene.start('LevelFailed',{
+          levelIndex:    this.levelIndex,
+          coinsCollected:this.coinsCollected,
+          requiredCoins: this.lvl.required,
+          levelScore:    this.levelScore,
+          totalScore:    this.totalScore
+        });
       });
     }
-
-    const finalScore=this.totalScore+this.levelScore;
-    const best=parseInt(localStorage.getItem('gf_best')||'0');
-    if(finalScore>best) localStorage.setItem('gf_best',finalScore);
-    const bLvl=parseInt(localStorage.getItem('gf_level')||'1');
-    if(this.levelIndex+1>bLvl) localStorage.setItem('gf_level',this.levelIndex+1);
-
-    this.time.delayedCall(900,()=>{
-      this.scene.start('LevelComplete',{
-        levelIndex:    this.levelIndex,
-        coinsCollected:this.coinsCollected,
-        totalCoins:    this.lvl.coins,
-        requiredCoins: this.lvl.required,
-        levelScore:    this.levelScore,
-        totalScore:    finalScore,
-        isLastLevel:   this.levelIndex>=LEVELS.length-1
-      });
-    });
   }
 
   // ── Death ───────────────────────────────────────────────────────────────────
@@ -758,6 +751,85 @@ class LevelCompleteScene extends Phaser.Scene {
   }
 }
 
+// ── LevelFailedScene ─────────────────────────────────────────────────────────
+class LevelFailedScene extends Phaser.Scene {
+  constructor(){ super('LevelFailed'); }
+  init(d){
+    this.levelIndex    = d.levelIndex;
+    this.coinsCollected= d.coinsCollected;
+    this.requiredCoins = d.requiredCoins;
+    this.levelScore    = d.levelScore;
+    this.totalScore    = d.totalScore;
+  }
+  create(){
+    this.cameras.main.setBackgroundColor('#000011');
+    const cx=W/2;
+
+    const g=this.add.graphics();
+    g.fillStyle(0x000922); g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
+    g.lineStyle(3,0xff4400,1);
+    g.beginPath(); g.moveTo(0,TUNNEL_TOP); g.lineTo(W,TUNNEL_TOP); g.strokePath();
+    g.beginPath(); g.moveTo(0,TUNNEL_BOTTOM); g.lineTo(W,TUNNEL_BOTTOM); g.strokePath();
+    this.add.rectangle(cx,H/2,W,H,0x000000,0.60);
+
+    // Slide in card
+    const cont = this.add.container(0, -H*0.25).setDepth(10);
+
+    cont.add(this.add.text(cx,H*0.17,'LEVEL FAILED',{
+      fontFamily:'"Press Start 2P"',fontSize:'24px',color:'#ff5500',
+      shadow:{x:3,y:3,color:'#661100',blur:0,fill:true}
+    }).setOrigin(0.5));
+
+    cont.add(this.add.text(cx,H*0.28,'NOT ENOUGH COINS!',{
+      fontFamily:'"Press Start 2P"',fontSize:'12px',color:'#ffaa44'
+    }).setOrigin(0.5));
+
+    // Coin result
+    const short = this.requiredCoins - this.coinsCollected;
+    cont.add(this.add.text(cx,H*0.38,`YOU COLLECTED`,{
+      fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#888888'
+    }).setOrigin(0.5));
+    cont.add(this.add.text(cx,H*0.44,`${this.coinsCollected} / ${this.requiredCoins}`,{
+      fontFamily:'"Press Start 2P"',fontSize:'28px',color:'#ffdd00'
+    }).setOrigin(0.5));
+    cont.add(this.add.text(cx,H*0.53,`COLLECT ${short} MORE NEXT TIME`,{
+      fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#ff8888'
+    }).setOrigin(0.5));
+
+    // Divider
+    const dg=this.add.graphics();
+    dg.lineStyle(1,0x333333,1);
+    dg.beginPath(); dg.moveTo(40,H*0.61); dg.lineTo(W-40,H*0.61); dg.strokePath();
+    cont.add(dg);
+
+    cont.add(this.add.text(cx,H*0.65,'LEVEL SCORE',{
+      fontFamily:'"Press Start 2P"',fontSize:'10px',color:'#555555'
+    }).setOrigin(0.5));
+    cont.add(this.add.text(cx,H*0.71,`${this.levelScore}`,{
+      fontFamily:'"Press Start 2P"',fontSize:'18px',color:'#666666'
+    }).setOrigin(0.5));
+
+    this.add.existing(cont);
+    this.tweens.add({targets:cont, y:0, duration:450, ease:'Back.easeOut'});
+
+    // Try again button
+    const tryBtn = this.add.text(cx,H*0.83,'\u25b6 TRY AGAIN',{
+      fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffffff',
+      shadow:{x:2,y:2,color:'#003388',blur:0,fill:true}
+    }).setOrigin(0.5).setDepth(20);
+    this.time.addEvent({delay:550,loop:true,callback:()=>tryBtn.setVisible(!tryBtn.visible)});
+
+    this.add.text(cx,H*0.91,'level score is lost',{
+      fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#333333'
+    }).setOrigin(0.5).setDepth(20);
+
+    this.time.delayedCall(600,()=>{
+      this.input.once('pointerdown',()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));
+      this.input.keyboard.once('keydown',()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));
+    });
+  }
+}
+
 // ── DeathScene ────────────────────────────────────────────────────────────────
 class DeathScene extends Phaser.Scene {
   constructor(){ super('Death'); }
@@ -806,7 +878,7 @@ class DeathScene extends Phaser.Scene {
 new Phaser.Game({
   type:Phaser.AUTO, width:W, height:H, backgroundColor:'#000011', parent:document.body,
   scale:{ mode:Phaser.Scale.FIT, autoCenter:Phaser.Scale.CENTER_BOTH },
-  scene:[BootScene,MenuScene,GameScene,LevelCompleteScene,DeathScene],
+  scene:[BootScene,MenuScene,GameScene,LevelCompleteScene,LevelFailedScene,DeathScene],
   fps:{target:60,forceSetTimeOut:false},
   render:{pixelArt:true,antialias:false}
 });
