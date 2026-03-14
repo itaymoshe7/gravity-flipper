@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gravity Flipper</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    touch-action: none;
+  }
+  canvas { display: block; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<script>
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const W = 480, H = 720;
+const TUNNEL_TOP    = 80;
+const TUNNEL_BOTTOM = H - 80;
+const TUNNEL_H      = TUNNEL_BOTTOM - TUNNEL_TOP;
+const PLAYER_X      = 100;
+const BASE_SPEED    = 220;
+const GRAVITY_FORCE = 1800;
+const PARTICLE_COUNT = 18;
+
+// ─── Utility ─────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ─── BootScene ───────────────────────────────────────────────────────────────
+class BootScene extends Phaser.Scene {
+  constructor() { super('Boot'); }
+  preload() {
+    // Generate all textures procedurally
+    this.makeTextures();
+  }
+  makeTextures() {
+    const g = this.make.graphics({ add: false });
+
+    // Player ship (16x16) — pixel art rocket
+    g.clear();
+    const shipPixels = [
+      '....XXXX....',
+      '...XXXXXX...',
+      '..XXXXXXXX..',
+      '.XXXXXXXXXX.',
+      'XXXXXXXXXXXX',
+      'XXXXXXXXXXXX',
+      '.XX.XXXX.XX.',
+      '....XXXX....',
+    ];
+    const pw = 12, ph = 8, scale = 2;
+    shipPixels.forEach((row, ry) => {
+      [...row].forEach((ch, rx) => {
+        if (ch === 'X') {
+          const bright = (rx === 5 || rx === 6) ? 0xffffff : 0x00ffff;
+          g.fillStyle(bright);
+          g.fillRect(rx * scale, ry * scale, scale, scale);
+        }
+      });
+    });
+    g.generateTexture('player', pw * scale, ph * scale);
+
+    // Spike (16x12)
+    g.clear();
+    g.fillStyle(0xff4444);
+    g.fillTriangle(8, 0, 0, 12, 16, 12);
+    g.fillStyle(0xff8888);
+    g.fillTriangle(8, 2, 2, 12, 14, 12);
+    g.generateTexture('spike', 16, 12);
+
+    // Spike flipped
+    g.clear();
+    g.fillStyle(0xff4444);
+    g.fillTriangle(8, 12, 0, 0, 16, 0);
+    g.fillStyle(0xff8888);
+    g.fillTriangle(8, 10, 2, 0, 14, 0);
+    g.generateTexture('spike_up', 16, 12);
+
+    // Barrier block (24x24)
+    g.clear();
+    g.fillStyle(0x8844ff);
+    g.fillRect(0, 0, 24, 24);
+    g.fillStyle(0xaa66ff);
+    g.fillRect(2, 2, 20, 4);
+    g.fillRect(2, 2, 4, 20);
+    g.fillStyle(0x330066);
+    g.fillRect(20, 4, 4, 20);
+    g.fillRect(4, 20, 16, 4);
+    g.generateTexture('block', 24, 24);
+
+    // Particle (4x4)
+    g.clear();
+    g.fillStyle(0xffffff);
+    g.fillRect(0, 0, 4, 4);
+    g.generateTexture('particle', 4, 4);
+
+    // Star (2x2)
+    g.clear();
+    g.fillStyle(0xffffff);
+    g.fillRect(0, 0, 2, 2);
+    g.generateTexture('star', 2, 2);
+
+    g.destroy();
+  }
+  create() {
+    this.scene.start('Menu');
+  }
+}
+
+// ─── MenuScene ────────────────────────────────────────────────────────────────
+class MenuScene extends Phaser.Scene {
+  constructor() { super('Menu'); }
+
+  create() {
+    this.cameras.main.setBackgroundColor('#000011');
+    this.buildStarfield();
+    this.buildTunnel();
+    this.buildUI();
+    this.input.once('pointerdown', () => this.scene.start('Game'));
+    this.input.keyboard.once('keydown', () => this.scene.start('Game'));
+
+    // Animate blink text
+    this.time.addEvent({
+      delay: 600, loop: true,
+      callback: () => { if (this.tapText) this.tapText.setVisible(!this.tapText.visible); }
+    });
+  }
+
+  buildStarfield() {
+    for (let i = 0; i < 80; i++) {
+      const x = Phaser.Math.Between(0, W);
+      const y = Phaser.Math.Between(0, H);
+      const s = this.add.image(x, y, 'star').setAlpha(Math.random() * 0.8 + 0.2);
+      this.tweens.add({ targets: s, alpha: 0.1, duration: Phaser.Math.Between(800,2000), yoyo: true, repeat: -1 });
+    }
+  }
+
+  buildTunnel() {
+    const g = this.add.graphics();
+    // Top wall
+    g.fillStyle(0x001133);
+    g.fillRect(0, 0, W, TUNNEL_TOP);
+    // Bottom wall
+    g.fillRect(0, TUNNEL_BOTTOM, W, H - TUNNEL_BOTTOM);
+    // Neon edges
+    g.lineStyle(3, 0x0088ff, 1);
+    g.beginPath(); g.moveTo(0, TUNNEL_TOP); g.lineTo(W, TUNNEL_TOP); g.strokePath();
+    g.beginPath(); g.moveTo(0, TUNNEL_BOTTOM); g.lineTo(W, TUNNEL_BOTTOM); g.strokePath();
+    // Glow
+    g.lineStyle(8, 0x0044ff, 0.3);
+    g.beginPath(); g.moveTo(0, TUNNEL_TOP); g.lineTo(W, TUNNEL_TOP); g.strokePath();
+    g.beginPath(); g.moveTo(0, TUNNEL_BOTTOM); g.lineTo(W, TUNNEL_BOTTOM); g.strokePath();
+  }
+
+  buildUI() {
+    const cx = W / 2;
+    // Title
+    this.add.text(cx, H * 0.28, 'GRAVITY', {
+      fontFamily: '"Press Start 2P"', fontSize: '36px', color: '#00ffff',
+      shadow: { x: 3, y: 3, color: '#0044ff', blur: 0, fill: true }
+    }).setOrigin(0.5);
+    this.add.text(cx, H * 0.38, 'FLIPPER', {
+      fontFamily: '"Press Start 2P"', fontSize: '36px', color: '#ff44ff',
+      shadow: { x: 3, y: 3, color: '#880088', blur: 0, fill: true }
+    }).setOrigin(0.5);
+
+    // Demo ship
+    const ship = this.add.image(cx, H * 0.54, 'player').setScale(3);
+    this.tweens.add({ targets: ship, y: H * 0.54 - 12, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+    // Best score
+    const best = localStorage.getItem('gf_best') || 0;
+    this.add.text(cx, H * 0.65, `BEST: ${best}m`, {
+      fontFamily: '"Press Start 2P"', fontSize: '12px', color: '#ffff00'
+    }).setOrigin(0.5);
+
+    // Tap to start
+    this.tapText = this.add.text(cx, H * 0.75, 'TAP TO START', {
+      fontFamily: '"Press Start 2P"', fontSize: '14px', color: '#ffffff'
+    }).setOrigin(0.5);
+
+    // Instructions
+    this.add.text(cx, H * 0.85, 'TAP = FLIP GRAVITY', {
+      fontFamily: '"Press Start 2P"', fontSize: '9px', color: '#888888'
+    }).setOrigin(0.5);
+  }
+}
+
+// ─── GameScene ────────────────────────────────────────────────────────────────
+class GameScene extends Phaser.Scene {
+  constructor() { super('Game'); }
+
+  create() {
+    this.cameras.main.setBackgroundColor('#000011');
+
+    // State
+    this.score = 0;
+    this.scoreDisplay = 0;
+    this.speed = BASE_SPEED;
+    this.gravDir = 1;           // 1 = down, -1 = up
+    this.vy = 0;
+    this.alive = true;
+    this.elapsed = 0;
+    this.distTraveled = 0;
+    this.flipCooldown = 0;
+    this.nextObstacleX = W + 200;
+    this.obstaclePool = [];
+    this.cameraShake = 0;
+
+    // Groups
+    this.obstacles = this.add.group();
+    this.particles = this.add.group();
+    this.stars = this.add.group();
+
+    this.buildStarfield();
+    this.buildWalls();
+    this.buildPlayer();
+    this.buildUI();
+    this.buildInputs();
+    this.spawnInitialObstacles();
+  }
+
+  buildStarfield() {
+    for (let i = 0; i < 60; i++) {
+      const s = this.add.image(
+        Phaser.Math.Between(0, W),
+        Phaser.Math.Between(TUNNEL_TOP + 4, TUNNEL_BOTTOM - 4),
+        'star'
+      ).setAlpha(Math.random() * 0.4 + 0.1).setDepth(0);
+      s.scrollX = Math.random() * 0.3 + 0.05;
+      this.stars.add(s);
+    }
+  }
+
+  buildWalls() {
+    const g = this.add.graphics().setDepth(5);
+    this.wallGraphics = g;
+    this.redrawWalls(0);
+  }
+
+  redrawWalls(camOffset) {
+    const g = this.wallGraphics;
+    g.clear();
+
+    // Top wall fill
+    g.fillStyle(0x000922);
+    g.fillRect(0, 0, W, TUNNEL_TOP);
+    // Bottom wall fill
+    g.fillRect(0, TUNNEL_BOTTOM, W, H - TUNNEL_BOTTOM);
+
+    // Grid lines in wall (decorative)
+    g.lineStyle(1, 0x001144, 0.6);
+    for (let x = -(camOffset % 40); x < W; x += 40) {
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, TUNNEL_TOP); g.strokePath();
+      g.beginPath(); g.moveTo(x, TUNNEL_BOTTOM); g.lineTo(x, H); g.strokePath();
+    }
+    for (let y = 0; y < TUNNEL_TOP; y += 20) {
+      g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.strokePath();
+    }
+    for (let y = TUNNEL_BOTTOM; y < H; y += 20) {
+      g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.strokePath();
+    }
+
+    // Neon tunnel edges
+    g.lineStyle(3, 0x0088ff, 1);
+    g.beginPath(); g.moveTo(0, TUNNEL_TOP); g.lineTo(W, TUNNEL_TOP); g.strokePath();
+    g.beginPath(); g.moveTo(0, TUNNEL_BOTTOM); g.lineTo(W, TUNNEL_BOTTOM); g.strokePath();
+
+    // Glow
+    g.lineStyle(10, 0x0044ff, 0.25);
+    g.beginPath(); g.moveTo(0, TUNNEL_TOP); g.lineTo(W, TUNNEL_TOP); g.strokePath();
+    g.beginPath(); g.moveTo(0, TUNNEL_BOTTOM); g.lineTo(W, TUNNEL_BOTTOM); g.strokePath();
+  }
+
+  buildPlayer() {
+    this.player = this.add.image(PLAYER_X, H / 2, 'player')
+      .setScale(2)
+      .setDepth(10);
+    this.playerTrail = [];
+    for (let i = 0; i < 6; i++) {
+      const t = this.add.image(PLAYER_X, H / 2, 'player')
+        .setScale(2).setAlpha(0.12 * (6 - i)).setDepth(9);
+      this.playerTrail.push(t);
+    }
+    this.playerHistory = Array(6).fill({ x: PLAYER_X, y: H / 2 });
+  }
+
+  buildUI() {
+    const best = parseInt(localStorage.getItem('gf_best') || '0');
+    this.scoreTxt = this.add.text(10, 10, '0m', {
+      fontFamily: '"Press Start 2P"', fontSize: '13px', color: '#00ffff'
+    }).setDepth(20);
+    this.bestTxt = this.add.text(W - 10, 10, `BEST ${best}m`, {
+      fontFamily: '"Press Start 2P"', fontSize: '11px', color: '#ffff00'
+    }).setOrigin(1, 0).setDepth(20);
+
+    // Multiplier / speed indicator strip
+    this.speedBar = this.add.graphics().setDepth(20);
+  }
+
+  buildInputs() {
+    this.input.on('pointerdown', this.flipGravity, this);
+    this.input.keyboard.on('keydown-SPACE', this.flipGravity, this);
+    this.input.keyboard.on('keydown-UP', this.flipGravity, this);
+  }
+
+  spawnInitialObstacles() {
+    // First clear section — spawn first obstacle far out
+    this.nextObstacleX = W + 350;
+  }
+
+  // ── Obstacle spawning ──────────────────────────────────────────────────────
+  spawnObstacle(x) {
+    const difficulty = clamp(this.elapsed / 30, 0, 1);
+    const rand = Math.random();
+
+    if (rand < 0.35) {
+      this.spawnSpikeRow(x, difficulty);
+    } else if (rand < 0.65) {
+      this.spawnBarrier(x, difficulty);
+    } else if (rand < 0.82) {
+      this.spawnMovingBlock(x, difficulty);
+    } else {
+      this.spawnGauntlet(x, difficulty);
+    }
+  }
+
+  spawnSpikeRow(x, difficulty) {
+    // Spikes on top or bottom wall (or both at higher difficulty)
+    const numTop = Math.floor(Phaser.Math.Between(1, 2 + Math.floor(difficulty * 3)));
+    const numBot = difficulty > 0.4 ? Math.floor(Phaser.Math.Between(0, 2 + Math.floor(difficulty * 2))) : 0;
+    const spacing = 18;
+
+    for (let i = 0; i < numTop; i++) {
+      const s = this.add.image(x + i * spacing, TUNNEL_TOP + 6, 'spike').setDepth(6);
+      s.obstacleType = 'spike';
+      this.obstacles.add(s);
+    }
+    for (let i = 0; i < numBot; i++) {
+      const s = this.add.image(x + i * spacing, TUNNEL_BOTTOM - 6, 'spike_up').setDepth(6);
+      s.obstacleType = 'spike';
+      this.obstacles.add(s);
+    }
+  }
+
+  spawnBarrier(x, difficulty) {
+    // Full-height barrier with a gap
+    const gapH = lerp(160, 90, difficulty);
+    const gapY = Phaser.Math.Between(TUNNEL_TOP + 20, TUNNEL_BOTTOM - gapH - 20);
+    const blockH = 24;
+
+    // Top section of barrier
+    for (let y = TUNNEL_TOP; y < gapY; y += blockH) {
+      const b = this.add.image(x, y + blockH / 2, 'block').setDepth(6);
+      b.obstacleType = 'barrier';
+      this.obstacles.add(b);
+    }
+    // Bottom section
+    for (let y = gapY + gapH; y < TUNNEL_BOTTOM; y += blockH) {
+      const b = this.add.image(x, y + blockH / 2, 'block').setDepth(6);
+      b.obstacleType = 'barrier';
+      this.obstacles.add(b);
+    }
+  }
+
+  spawnMovingBlock(x, difficulty) {
+    const b = this.add.image(x, H / 2, 'block').setScale(1.5).setDepth(6);
+    b.obstacleType = 'moving';
+    b.moveSpeed = lerp(60, 180, difficulty) * (Math.random() > 0.5 ? 1 : -1);
+    b.minY = TUNNEL_TOP + 20;
+    b.maxY = TUNNEL_BOTTOM - 20;
+    this.obstacles.add(b);
+  }
+
+  spawnGauntlet(x, difficulty) {
+    // Series of spikes + a barrier close together
+    this.spawnSpikeRow(x, difficulty);
+    this.spawnBarrier(x + 80, difficulty);
+  }
+
+  // ── Gravity flip ───────────────────────────────────────────────────────────
+  flipGravity() {
+    if (!this.alive) return;
+    if (this.flipCooldown > 0) return;
+    this.flipCooldown = 0.12;
+
+    this.gravDir *= -1;
+
+    // Give initial kick in new direction
+    this.vy = this.gravDir * -380;
+
+    // Screen flash
+    this.cameras.main.flash(80, 0, 120, 255, false);
+
+    // Particle burst
+    this.emitFlipParticles();
+
+    // Subtle shake
+    this.cameraShake = 0.06;
+  }
+
+  emitFlipParticles() {
+    const colors = [0x00ffff, 0xff44ff, 0xffffff, 0x44ffff, 0xffff00];
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      let p = this.getPooledParticle();
+      if (!p) {
+        p = this.add.image(0, 0, 'particle').setDepth(15);
+        this.particles.add(p);
+      }
+      p.setActive(true).setVisible(true);
+      p.x = this.player.x;
+      p.y = this.player.y;
+      const angle = (i / PARTICLE_COUNT) * Math.PI * 2;
+      const speed = Phaser.Math.Between(60, 160);
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.life = 1.0;
+      p.tintTopLeft = colors[i % colors.length];
+      p.setScale(Phaser.Math.Between(1, 3));
+    }
+  }
+
+  getPooledParticle() {
+    const list = this.particles.getChildren();
+    for (let p of list) {
+      if (!p.active) return p;
+    }
+    return null;
+  }
+
+  // ── Update ─────────────────────────────────────────────────────────────────
+  update(time, delta) {
+    if (!this.alive) return;
+    const dt = delta / 1000;
+
+    this.elapsed += dt;
+    this.flipCooldown = Math.max(0, this.flipCooldown - dt);
+
+    // Speed progression
+    this.speed = BASE_SPEED + Math.min(this.elapsed * 8, 260);
+
+    // Distance / score
+    this.distTraveled += this.speed * dt;
+    this.score = Math.floor(this.distTraveled / 100);
+    if (this.score > this.scoreDisplay) {
+      this.scoreDisplay = this.score;
+      this.scoreTxt.setText(`${this.score}m`);
+    }
+
+    // Physics
+    this.vy += GRAVITY_FORCE * this.gravDir * dt;
+    this.vy = clamp(this.vy, -700, 700);
+    this.player.y += this.vy * dt;
+
+    // Rotate player slightly based on velocity
+    this.player.setRotation(clamp(this.vy * 0.0008, -0.3, 0.3));
+
+    // Trail
+    this.playerHistory.unshift({ x: this.player.x, y: this.player.y });
+    this.playerHistory = this.playerHistory.slice(0, 6);
+    this.playerTrail.forEach((t, i) => {
+      const h = this.playerHistory[i] || this.playerHistory[this.playerHistory.length - 1];
+      t.x = h.x; t.y = h.y; t.setRotation(this.player.rotation);
+    });
+
+    // Wall collision
+    const ph = this.player.displayHeight / 2;
+    if (this.player.y - ph <= TUNNEL_TOP || this.player.y + ph >= TUNNEL_BOTTOM) {
+      this.die();
+      return;
+    }
+
+    // Scroll stars
+    this.stars.getChildren().forEach(s => {
+      s.x -= this.speed * dt * s.scrollX;
+      if (s.x < -2) s.x = W + 2;
+    });
+
+    // Scroll obstacles, check collision
+    this.obstacles.getChildren().forEach(obs => {
+      obs.x -= this.speed * dt;
+
+      // Moving blocks bounce
+      if (obs.obstacleType === 'moving') {
+        obs.y += obs.moveSpeed * dt;
+        if (obs.y < obs.minY || obs.y > obs.maxY) obs.moveSpeed *= -1;
+      }
+
+      // Simple AABB collision
+      if (this.aabbCollide(this.player, obs)) {
+        this.die();
+        return;
+      }
+    });
+
+    // Cull off-screen obstacles
+    this.obstacles.getChildren().slice().forEach(obs => {
+      if (obs.x < -60) this.obstacles.remove(obs, true, true);
+    });
+
+    // Spawn new obstacles
+    const spawnThresh = this.distTraveled + W + 150;
+    if (spawnThresh > this.nextObstacleX) {
+      const gap = lerp(320, 160, clamp(this.elapsed / 45, 0, 1));
+      this.spawnObstacle(this.nextObstacleX - this.distTraveled + W);
+      this.nextObstacleX += Phaser.Math.Between(gap * 0.8, gap * 1.3);
+    }
+
+    // Particles
+    this.particles.getChildren().forEach(p => {
+      if (!p.active) return;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+      p.life -= dt * 2.5;
+      p.setAlpha(Math.max(0, p.life));
+      if (p.life <= 0) p.setActive(false).setVisible(false);
+    });
+
+    // Camera shake
+    if (this.cameraShake > 0) {
+      this.cameraShake -= dt * 2;
+      const mag = this.cameraShake * 6;
+      this.cameras.main.setScroll(
+        (Math.random() - 0.5) * mag,
+        (Math.random() - 0.5) * mag
+      );
+    } else {
+      this.cameras.main.setScroll(0, 0);
+    }
+
+    // Redraw walls with grid offset
+    this.redrawWalls(this.distTraveled);
+
+    // Speed bar
+    this.updateSpeedBar();
+  }
+
+  aabbCollide(a, b) {
+    const aw = a.displayWidth * 0.55;
+    const ah = a.displayHeight * 0.55;
+    const bw = b.displayWidth * 0.60;
+    const bh = b.displayHeight * 0.60;
+    return Math.abs(a.x - b.x) < (aw + bw) / 2 &&
+           Math.abs(a.y - b.y) < (ah + bh) / 2;
+  }
+
+  updateSpeedBar() {
+    const g = this.speedBar;
+    g.clear();
+    const t = clamp((this.speed - BASE_SPEED) / 260, 0, 1);
+    const barW = Math.floor(t * (W - 20));
+    if (barW < 2) return;
+    const col = Phaser.Display.Color.Interpolate.ColorWithColor(
+      Phaser.Display.Color.ValueToColor(0x0088ff),
+      Phaser.Display.Color.ValueToColor(0xff4400),
+      100, Math.floor(t * 100)
+    );
+    const hex = Phaser.Display.Color.GetColor(col.r, col.g, col.b);
+    g.fillStyle(hex, 0.6);
+    g.fillRect(10, H - 14, barW, 4);
+    g.fillStyle(0xffffff, 0.3);
+    g.fillRect(10, H - 14, barW, 1);
+  }
+
+  die() {
+    if (!this.alive) return;
+    this.alive = false;
+
+    // Big shake
+    this.cameras.main.shake(400, 0.018);
+    this.cameras.main.flash(200, 255, 50, 50, false);
+
+    // Explosion particles
+    for (let i = 0; i < 32; i++) {
+      let p = this.add.image(this.player.x, this.player.y, 'particle')
+        .setDepth(20).setScale(Phaser.Math.Between(1, 4));
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Phaser.Math.Between(80, 280);
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.life = 1.0;
+      const hue = Math.random() > 0.5 ? 0xff4400 : 0xffff00;
+      p.setTint(hue);
+      this.particles.add(p);
+      this.tweens.add({
+        targets: p, alpha: 0, scale: 0, duration: 600 + Math.random() * 400,
+        onComplete: () => p.destroy()
+      });
+    }
+
+    this.player.setVisible(false);
+    this.playerTrail.forEach(t => t.setVisible(false));
+
+    // Save best
+    const best = parseInt(localStorage.getItem('gf_best') || '0');
+    if (this.score > best) localStorage.setItem('gf_best', this.score);
+
+    // Show death screen after delay
+    this.time.delayedCall(900, () => {
+      this.scene.start('Death', { score: this.score });
+    });
+  }
+}
+
+// ─── DeathScene ───────────────────────────────────────────────────────────────
+class DeathScene extends Phaser.Scene {
+  constructor() { super('Death'); }
+
+  init(data) {
+    this.finalScore = data.score || 0;
+  }
+
+  create() {
+    this.cameras.main.setBackgroundColor('#000011');
+    const best = parseInt(localStorage.getItem('gf_best') || '0');
+    const cx = W / 2;
+
+    // Dim overlay
+    this.add.rectangle(cx, H / 2, W, H, 0x000000, 0.55).setDepth(0);
+
+    // Build static tunnel lines
+    const g = this.add.graphics().setDepth(1);
+    g.fillStyle(0x000922);
+    g.fillRect(0, 0, W, TUNNEL_TOP);
+    g.fillRect(0, TUNNEL_BOTTOM, W, H - TUNNEL_BOTTOM);
+    g.lineStyle(3, 0x0088ff, 1);
+    g.beginPath(); g.moveTo(0, TUNNEL_TOP); g.lineTo(W, TUNNEL_TOP); g.strokePath();
+    g.beginPath(); g.moveTo(0, TUNNEL_BOTTOM); g.lineTo(W, TUNNEL_BOTTOM); g.strokePath();
+
+    const isNewBest = this.finalScore >= best;
+
+    // Title
+    this.add.text(cx, H * 0.20, 'GAME', {
+      fontFamily: '"Press Start 2P"', fontSize: '32px', color: '#ff4444',
+      shadow: { x: 3, y: 3, color: '#880000', blur: 0, fill: true }
+    }).setOrigin(0.5).setDepth(10);
+    this.add.text(cx, H * 0.29, 'OVER', {
+      fontFamily: '"Press Start 2P"', fontSize: '32px', color: '#ff4444',
+      shadow: { x: 3, y: 3, color: '#880000', blur: 0, fill: true }
+    }).setOrigin(0.5).setDepth(10);
+
+    // Score
+    this.add.text(cx, H * 0.45, 'SCORE', {
+      fontFamily: '"Press Start 2P"', fontSize: '12px', color: '#888888'
+    }).setOrigin(0.5).setDepth(10);
+    this.add.text(cx, H * 0.51, `${this.finalScore}m`, {
+      fontFamily: '"Press Start 2P"', fontSize: '26px',
+      color: isNewBest ? '#ffff00' : '#00ffff'
+    }).setOrigin(0.5).setDepth(10);
+
+    if (isNewBest && this.finalScore > 0) {
+      this.add.text(cx, H * 0.58, 'NEW BEST!', {
+        fontFamily: '"Press Start 2P"', fontSize: '13px', color: '#ffff00'
+      }).setOrigin(0.5).setDepth(10);
+    } else {
+      this.add.text(cx, H * 0.58, `BEST: ${best}m`, {
+        fontFamily: '"Press Start 2P"', fontSize: '12px', color: '#ffff00'
+      }).setOrigin(0.5).setDepth(10);
+    }
+
+    // Tap to restart (blink)
+    const tapTxt = this.add.text(cx, H * 0.75, 'TAP TO RESTART', {
+      fontFamily: '"Press Start 2P"', fontSize: '13px', color: '#ffffff'
+    }).setOrigin(0.5).setDepth(10);
+
+    this.time.addEvent({
+      delay: 600, loop: true,
+      callback: () => tapTxt.setVisible(!tapTxt.visible)
+    });
+
+    // Wait a moment before allowing input
+    this.time.delayedCall(500, () => {
+      this.input.once('pointerdown', () => this.scene.start('Game'));
+      this.input.keyboard.once('keydown', () => this.scene.start('Game'));
+    });
+  }
+}
+
+// ─── Phaser config ─────────────────────────────────────────────────────────--
+const config = {
+  type: Phaser.AUTO,
+  width: W,
+  height: H,
+  backgroundColor: '#000011',
+  parent: document.body,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
+  scene: [BootScene, MenuScene, GameScene, DeathScene],
+  fps: { target: 60, forceSetTimeOut: false },
+  render: { pixelArt: true, antialias: false }
+};
+
+new Phaser.Game(config);
+</script>
+</body>
+</html>
