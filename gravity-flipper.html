@@ -489,7 +489,7 @@ class GameScene extends Phaser.Scene{
       this._runCountdown();
     };
     this.input.once('pointerdown',startCountdown);
-    this.input.keyboard.once('keydown',startCountdown);
+    if(this.input.keyboard)this.input.keyboard.once('keydown',startCountdown);
     this.time.delayedCall(4000,startCountdown);
   }
 
@@ -868,7 +868,7 @@ class LevelCompleteScene extends Phaser.Scene{
     });
     this.time.delayedCall(700,()=>{
       const next=()=>{AUDIO.stopMusic();const ni=this.isLastLevel?0:this.levelIndex+1,ns=this.isLastLevel?0:this.totalScore;this.scene.start('Game',{levelIndex:ni,totalScore:ns});};
-      this.input.once('pointerdown',next);this.input.keyboard.once('keydown',next);
+      this.input.once('pointerdown',next);if(this.input.keyboard)this.input.keyboard.once('keydown',next);
     });
   }
 }
@@ -903,8 +903,13 @@ class LevelFailedScene extends Phaser.Scene{
     this.time.addEvent({delay:550,loop:true,callback:()=>tryBtn.setVisible(!tryBtn.visible)});
     this.add.text(cx,H*0.91,'level score is lost',{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#333333'}).setOrigin(0.5).setDepth(20);
     this.time.delayedCall(600,()=>{
-      this.input.once('pointerdown',()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));
-      this.input.keyboard.once('keydown',()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));
+      let going=false;
+      const go=()=>{if(going)return;going=true;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore}));};
+      this.add.rectangle(W/2,H/2,W,H,0x000000,0).setInteractive({useHandCursor:false}).setDepth(100).on('pointerdown',go);
+      if(this.input.keyboard){
+        this.input.keyboard.on('keydown-SPACE',go);
+        this.input.keyboard.on('keydown-ENTER',go);
+      }
     });
   }
 }
@@ -939,11 +944,16 @@ class DeathScene extends Phaser.Scene{
     this.add.text(cx,H*0.93,'(tap lower half)',{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#333333'}).setOrigin(0.5);
     this.time.addEvent({delay:580,loop:true,callback:()=>retryTxt.setVisible(!retryTxt.visible)});
     this.time.delayedCall(600,()=>{
-      this.input.on('pointerdown',(ptr)=>{
-        if(ptr.y<H*0.84)this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:0});
-        else this.scene.start('Game',{levelIndex:0,totalScore:0});
-      });
-      this.input.keyboard.once('keydown',()=>this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:0}));
+      let going=false;
+      const go=(lvlIdx)=>{if(going)return;going=true;this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:lvlIdx,totalScore:0}));};
+      // Full-screen tap zone so anywhere on screen works
+      this.add.rectangle(W/2,H/2,W,H,0x000000,0).setInteractive({useHandCursor:false}).setDepth(100)
+        .on('pointerdown',(ptr)=>go(ptr.y<H*0.84?this.levelIndex:0));
+      if(this.input.keyboard){
+        this.input.keyboard.on('keydown-SPACE',()=>go(this.levelIndex));
+        this.input.keyboard.on('keydown-ENTER',()=>go(this.levelIndex));
+        this.input.keyboard.on('keydown-R',()=>go(0));
+      }
     });
   }
 }
