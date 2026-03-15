@@ -71,9 +71,28 @@
   /* spinner for async leaderboard */
   .lb-spin{display:inline-block;width:14px;height:14px;border:2px solid #1a1a2a;border-top-color:#00ffff;border-radius:50%;animation:lb-s 0.7s linear infinite;vertical-align:middle;}
   @keyframes lb-s{to{transform:rotate(360deg);}}
+  /* In-game HTML pause button */
+  #game-btn-layer{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:100;display:none;align-items:center;justify-content:center;}
+  #game-btn-frame{position:relative;width:min(100vw,66.667vh);height:min(100vh,150vw);pointer-events:none;}
+  .game-hw-btn{position:absolute;width:40px;height:40px;background:rgba(0,0,18,0.75);border:1px solid rgba(0,200,255,0.4);border-radius:10px;color:rgba(120,210,255,0.95);font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent;box-shadow:0 0 12px rgba(0,200,255,0.25);transition:background .12s,box-shadow .12s;user-select:none;-webkit-user-select:none;outline:none;-webkit-appearance:none;}
+  .game-hw-btn:active{background:rgba(0,190,255,0.22);box-shadow:0 0 22px rgba(0,200,255,0.55);}
+  #btn-pause{top:0.83%;right:1.67%;}
+  /* Challenge popup animation */
+  @keyframes chal-in{from{transform:scale(0.55) translateY(32px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+  @keyframes trophy-pulse{0%,100%{transform:scale(1) rotate(-5deg)}50%{transform:scale(1.22) rotate(5deg)}}
+  .chal-popup{animation:chal-in 0.5s cubic-bezier(0.34,1.56,0.64,1) both;}
+  .chal-trophy{display:inline-block;animation:trophy-pulse 0.85s ease-in-out infinite;font-size:clamp(52px,16vw,72px);line-height:1.1;}
+  /* Share buttons */
+  .share-btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:48px;padding:11px 14px;margin:4px 0;font-family:"Press Start 2P",monospace;font-size:clamp(9px,2.4vw,11px);background:transparent;border:2px solid;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;letter-spacing:1px;box-sizing:border-box;}
+  .share-wa{border-color:#25D366;color:#25D366;}.share-wa:active{background:rgba(37,211,102,0.14);}
+  .share-gm{border-color:#EA4335;color:#EA4335;}.share-gm:active{background:rgba(234,67,53,0.14);}
+  .share-cp{border-color:#00ccff;color:#00ccff;}.share-cp:active{background:rgba(0,204,255,0.14);}
 </style>
 </head>
 <body>
+<div id="game-btn-layer"><div id="game-btn-frame">
+  <button id="btn-pause" class="game-hw-btn" aria-label="Pause">&#x23F8;</button>
+</div></div>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -146,11 +165,26 @@ function fillLbAsync(containerId,myName){
 function makeChallengeUrl(name,score){
   return`${location.href.split('?')[0]}?challenge=${encodeURIComponent(name)}:${score}`;
 }
-function wireCopyLink(btnId,url){
-  const btn=document.getElementById(btnId);if(!btn)return;
-  addTap(btn,()=>{
-    (navigator.clipboard?navigator.clipboard.writeText(url).catch(()=>prompt('Copy link:',url)):Promise.resolve(prompt('Copy link:',url)));
-    btn.textContent='\u2713 COPIED!';btn.style.color='#00ff88';btn.style.borderColor='#00ff88';
+function wireShareBtns(containerId,name,score){
+  const cont=document.getElementById(containerId);if(!cont)return;
+  const url=makeChallengeUrl(name,score);
+  // Step 1: show trigger button
+  cont.innerHTML=`<button class="ov-btn ov-btn-sm" id="${containerId}-t" style="border-color:#ff88ff;color:#ff88ff">\u2694 CHALLENGE A FRIEND</button>`;
+  addTap(document.getElementById(`${containerId}-t`),()=>{
+    // Step 2: replace with share options
+    const msg=encodeURIComponent(`\uD83C\uDFAE I scored ${score} in Gravity Flipper! Think you can beat me? ${url}`);
+    cont.innerHTML=`
+      <div class="ov-sub" style="color:#888;margin:6px 0 4px">SHARE VIA</div>
+      <button class="share-btn share-wa" id="${containerId}-wa">\uD83D\uDCAC WHATSAPP</button>
+      <button class="share-btn share-gm" id="${containerId}-gm">\uD83D\uDCE7 GMAIL</button>
+      <button class="share-btn share-cp" id="${containerId}-cp">\uD83D\uDD17 COPY LINK</button>`;
+    addTap(document.getElementById(`${containerId}-wa`),()=>window.open(`https://wa.me/?text=${msg}`,'_blank'));
+    addTap(document.getElementById(`${containerId}-gm`),()=>window.open(`mailto:?subject=${encodeURIComponent('Gravity Flipper Challenge!')}&body=${msg}`,'_self'));
+    addTap(document.getElementById(`${containerId}-cp`),()=>{
+      navigator.clipboard?navigator.clipboard.writeText(url).catch(()=>prompt('Copy:',url)):prompt('Copy:',url);
+      const b=document.getElementById(`${containerId}-cp`);
+      if(b){b.textContent='\u2713 COPIED!';b.style.borderColor='#00ff88';b.style.color='#00ff88';}
+    });
   });
 }
 
@@ -609,6 +643,31 @@ class MenuScene extends Phaser.Scene{
     if(this._charIdx<0)this._charIdx=0;
     this._trackIdx=TRACKS.findIndex(t=>t.id===(localStorage.getItem('gf_track')||'neon'));
     if(this._trackIdx<0)this._trackIdx=0;
+    this.events.once('shutdown',()=>OV.hide());
+    if(CHALLENGE.active){this._showChallengePopup(()=>this._buildMenu());}
+    else{this._buildMenu();}
+  }
+  _showChallengePopup(cb){
+    OV.show('ov-chal-popup',
+      `<div class="ov-wrap chal-popup">
+        <div class="chal-trophy">\uD83C\uDFC6</div>
+        <div class="ov-title" style="color:#ffdd00;margin-top:8px;font-size:clamp(16px,5vw,24px)">${CHALLENGE.name}</div>
+        <div class="ov-sub" style="color:#ff88ff;margin:2px 0 8px">CHALLENGES YOU!</div>
+        <hr class="ov-rule">
+        <div class="ov-sub" style="color:#888">CAN YOU BEAT</div>
+        <div class="ov-score" style="color:#ff8800;font-size:clamp(28px,9vw,42px)">${CHALLENGE.score}</div>
+        <div class="ov-sub" style="color:#888;margin-bottom:18px">POINTS?</div>
+        <button class="ov-btn" id="ov-accept" style="border-color:#ffdd00;color:#ffdd00;font-size:clamp(12px,3.6vw,15px);background:rgba(255,200,0,0.08)">\u2694 ACCEPT CHALLENGE</button>
+        <button class="ov-btn ov-btn-sm" id="ov-decline" style="margin-top:4px">PLAY WITHOUT CHALLENGE</button>
+      </div>`,'rgba(0,0,8,0.97)');
+    let done=false;
+    const accept=()=>{if(done)return;done=true;cb();};
+    addTap(document.getElementById('ov-accept'),accept);
+    addTap(document.getElementById('ov-decline'),accept);
+    this.time.delayedCall(10000,accept);
+    if(this.input.keyboard)this.input.keyboard.once('keydown',accept);
+  }
+  _buildMenu(){
     const best=localStorage.getItem('gf_best')||0;
     const reach=localStorage.getItem('gf_level')||1;
     const savedName=localStorage.getItem('gf_name')||'';
@@ -626,7 +685,6 @@ class MenuScene extends Phaser.Scene{
     OV.show('ov-menu',
       `<div class="ov-wrap">
         <div class="ov-title" style="color:#00ffff;text-shadow:3px 3px #0044ff">GRAVITY<br><span style="color:#ff44ff;text-shadow:3px 3px #880088">FLIPPER</span></div>
-        ${CHALLENGE.active?`<div style="border:1px solid #ff44ff;padding:8px 6px;margin:8px 0 4px;font-size:clamp(8px,2.2vw,9px);line-height:1.7"><span style="color:#ff44ff">\u2694 CHALLENGE FROM ${CHALLENGE.name}</span><br><span style="color:#ffdd00">BEAT: ${CHALLENGE.score} PTS</span></div>`:''}
         <div class="ov-sub" style="color:#888;margin-top:6px">&#9660; PILOT NAME</div>
         <input class="name-input" id="gf-name-inp" type="text" maxlength="12" placeholder="ENTER YOUR NAME..." autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" value="${savedName}">
         <div class="ov-sub" style="color:#888;margin-top:4px">&#9660; SHIP</div>
@@ -666,7 +724,6 @@ class MenuScene extends Phaser.Scene{
       btn.className='ov-btn'+(ok?'':' ov-btn-disabled');
       btn.style.borderColor=ok?'#00ffff':'#444';btn.style.color=ok?'#00ffff':'#444';
     });
-    this.events.once('shutdown',()=>OV.hide());
     if(this.input.keyboard)this.input.keyboard.once('keydown-ENTER',go);
   }
   _pickChar(i){
@@ -901,15 +958,17 @@ class GameScene extends Phaser.Scene{
     this.progGfx=this.add.graphics().setDepth(20);
     this.powerupGfx=this.add.graphics().setDepth(20);
     this.powerupTxt=this.add.text(10,52,'',{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#00ff88'}).setDepth(20);
-    // Mute — bottom-right
+    // Mute — bottom-right (Phaser text, stays on canvas)
     this.muteBtn=this.add.text(W-12,H-12,AUDIO.muted?'[M]':'[S]',{fontFamily:'"Press Start 2P"',fontSize:'9px',color:AUDIO.muted?'#555555':'#00ffcc'}).setOrigin(1,1).setDepth(21).setInteractive();
     this.muteBtn.on('pointerdown',()=>{const m=AUDIO.toggleMute();this.muteBtn.setText(m?'[M]':'[S]').setColor(m?'#555555':'#00ffcc');});
-    // Home ⌂ — top-left (Arial for glyph support)
-    this.homeBtn=this.add.text(8,6,'\u2302',{fontFamily:'Arial,sans-serif',fontSize:'20px',color:'#445566'}).setDepth(21).setInteractive();
-    this.homeBtn.on('pointerdown',()=>{AUDIO.stopMusic();OV.hide();this._paused=false;this.scene.start('Menu');});
-    // Pause ⏸ — top-right
-    this.pauseBtn=this.add.text(W-8,6,'\u23f8',{fontFamily:'Arial,sans-serif',fontSize:'20px',color:'#445566'}).setOrigin(1,0).setDepth(21).setInteractive();
-    this.pauseBtn.on('pointerdown',()=>this._pause());
+    // HTML pause button — show layer, wire tap
+    const _layer=document.getElementById('game-btn-layer');
+    const _pbtn=document.getElementById('btn-pause');
+    if(_layer){_layer.style.display='flex';}
+    if(_pbtn){_pbtn.style.display='flex';addTap(_pbtn,()=>this._pause());}
+    this.events.on('shutdown',()=>{
+      const l=document.getElementById('game-btn-layer');if(l)l.style.display='none';
+    });
     // Challenge HUD
     if(CHALLENGE.active){
       this.challengeTxt=this.add.text(W/2,28,`\u2694 ${CHALLENGE.name}: ${CHALLENGE.score}`,
@@ -919,9 +978,7 @@ class GameScene extends Phaser.Scene{
 
   _buildInputs(){
     INPUT.on((pos)=>{
-      if(pos.y<44&&pos.x<50)return;        // home ⌂ (top-left)
-      if(pos.y<44&&pos.x>W-50)return;      // pause ⏸ (top-right)
-      if(pos.x>W-44&&pos.y>H-44)return;    // mute (bottom-right)
+      if(pos.x>W-44&&pos.y>H-44)return;  // mute (bottom-right)
       if(this._paused)return;
       this._flip();
     });
@@ -939,6 +996,7 @@ class GameScene extends Phaser.Scene{
   _pause(){
     if(this._paused||!this.alive||!this.gameStarted)return;
     this._paused=true;
+    const pb=document.getElementById('btn-pause');if(pb)pb.style.display='none';
     AUDIO.pauseMusic();
     OV.show('ov-pause',
       `<div class="ov-wrap">
@@ -956,6 +1014,7 @@ class GameScene extends Phaser.Scene{
     if(!this._paused)return;
     this._paused=false;
     OV.hide();
+    const pb=document.getElementById('btn-pause');if(pb)pb.style.display='flex';
     AUDIO.resumeMusic();
   }
 
@@ -1520,7 +1579,7 @@ class LevelCompleteScene extends Phaser.Scene{
         ${!this.isLastLevel?`<div class="ov-sub" style="color:#aaa">NEXT: LVL ${this.levelIndex+2} \u2022 ${nt.name}</div>`:''}
         <button class="ov-btn" id="ov-next" style="margin-top:16px;border-color:#00ff88;color:#00ff88">${this.isLastLevel?'\u25b6 PLAY AGAIN':'\u25b6 LEVEL '+(this.levelIndex+2)}</button>
         <button class="ov-btn ov-btn-sm" id="ov-home">\u2190 MAIN MENU</button>
-        <button class="ov-btn ov-btn-sm" id="ov-chal" style="border-color:#ff88ff;color:#ff88ff;margin-top:4px">\u2694 CHALLENGE A FRIEND</button>
+        <div id="complete-share"></div>
       </div>`);
     this.events.once('shutdown',()=>OV.hide());
     this.time.delayedCall(400,()=>{
@@ -1530,7 +1589,7 @@ class LevelCompleteScene extends Phaser.Scene{
       addTap(document.getElementById('ov-next'),next);
       addTap(document.getElementById('ov-home'),home);
       const pn=(localStorage.getItem('gf_name')||'PLAYER').trim().toUpperCase().substring(0,12);
-      wireCopyLink('ov-chal',makeChallengeUrl(pn,this.totalScore));
+      wireShareBtns('complete-share',pn,this.totalScore);
       if(this.input.keyboard){this.input.keyboard.once('keydown-SPACE',next);this.input.keyboard.once('keydown-ENTER',next);}
     });
   }
@@ -1600,7 +1659,7 @@ class DeathScene extends Phaser.Scene{
         <hr class="ov-rule">
         <button class="ov-btn" id="ov-retry" style="border-color:#00ffff;color:#00ffff">\u25b6 TRY AGAIN</button>
         <button class="ov-btn ov-btn-sm" id="ov-home">\u2190 MAIN MENU</button>
-        <button class="ov-btn ov-btn-sm" id="ov-chal-d" style="border-color:#ff88ff;color:#ff88ff;margin-top:4px">\u2694 CHALLENGE A FRIEND</button>
+        <div id="death-share"></div>
       </div>`);
     fillLbAsync('lb-death',myName);
     this.events.once('shutdown',()=>OV.hide());
@@ -1610,8 +1669,7 @@ class DeathScene extends Phaser.Scene{
       const home=()=>{if(going)return;going=true;OV.hide();AUDIO.stopMusic();this.scene.start('Menu');};
       addTap(document.getElementById('ov-retry'),()=>go(this.levelIndex));
       addTap(document.getElementById('ov-home'),home);
-      const pn=myName||'PLAYER';
-      wireCopyLink('ov-chal-d',makeChallengeUrl(pn,this.finalScore));
+      wireShareBtns('death-share',myName||'PLAYER',this.finalScore);
       if(this.input.keyboard){
         this.input.keyboard.on('keydown-SPACE',()=>go(this.levelIndex));
         this.input.keyboard.on('keydown-ENTER',()=>go(this.levelIndex));
