@@ -48,6 +48,25 @@
   .tr-swatch{width:68%;height:10px;border-radius:3px;}
   /* 5th track button spans both columns when alone on its row */
   .tr-grid .tr-btn:last-child:nth-child(odd){grid-column:1/-1;max-width:calc(50% - 4px);margin:0 auto;}
+  /* player name input */
+  .name-input{width:100%;padding:11px 14px;margin:6px 0;font-family:"Press Start 2P",monospace;
+              font-size:clamp(10px,2.8vw,13px);background:#0a0a18;border:2px solid #334;
+              color:#fff;text-align:center;box-sizing:border-box;outline:none;
+              -webkit-tap-highlight-color:transparent;touch-action:auto;
+              letter-spacing:1px;text-transform:uppercase;}
+  .name-input:focus{border-color:#00ffff;}
+  .name-input::placeholder{color:#333;text-transform:none;}
+  /* leaderboard */
+  .lb-list{width:100%;margin:8px 0;}
+  .lb-row{display:flex;align-items:center;padding:5px 2px;border-bottom:1px solid #1a1a2a;
+          color:#555;font-size:clamp(7px,1.9vw,9px);gap:4px;}
+  .lb-rank{min-width:26px;color:#666;}
+  .lb-name{flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .lb-score{min-width:64px;text-align:right;color:#ccc;}
+  .lb-date{min-width:34px;text-align:right;color:#333;font-size:7px;margin-left:2px;}
+  .lb-row:first-child .lb-rank,.lb-row:first-child .lb-name,.lb-row:first-child .lb-score{color:#ffdd00;}
+  .lb-me{background:rgba(0,255,255,0.06);}
+  .lb-me .lb-rank,.lb-me .lb-name,.lb-me .lb-score{color:#00ffff!important;}
 </style>
 </head>
 <body>
@@ -119,6 +138,19 @@ const LEVELS=[
 ];
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
 
+// ── Leaderboard helpers ───────────────────────────────────────────────────────
+function saveScore(score){
+  if(!score||score<=0)return;
+  const name=(localStorage.getItem('gf_name')||'UNKNOWN').trim().toUpperCase().substring(0,12)||'UNKNOWN';
+  const now=new Date();
+  const date=`${now.getMonth()+1}/${now.getDate()}`;
+  const scores=JSON.parse(localStorage.getItem('gf_scores')||'[]');
+  scores.push({name,score,date});
+  scores.sort((a,b)=>b.score-a.score);
+  localStorage.setItem('gf_scores',JSON.stringify(scores.slice(0,20)));
+}
+function getScores(){return JSON.parse(localStorage.getItem('gf_scores')||'[]');}
+
 // ── Audio Manager ─────────────────────────────────────────────────────────────
 class AudioMgr{
   constructor(){
@@ -144,10 +176,17 @@ class AudioMgr{
   }
   flip(){
     if(!this.ctx||this.muted)return;this.resume();
-    const t=this.ctx.currentTime,o=this.ctx.createOscillator(),g=this.ctx.createGain();
-    o.type='square';o.frequency.setValueAtTime(180,t);o.frequency.exponentialRampToValueAtTime(560,t+0.1);
-    g.gain.setValueAtTime(0.25,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.14);
-    o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.15);
+    const t=this.ctx.currentTime;
+    // Sub-bass thump for punch
+    const o1=this.ctx.createOscillator(),g1=this.ctx.createGain();
+    o1.type='square';o1.frequency.setValueAtTime(90,t);o1.frequency.exponentialRampToValueAtTime(42,t+0.07);
+    g1.gain.setValueAtTime(0.45,t);g1.gain.exponentialRampToValueAtTime(0.0001,t+0.09);
+    o1.connect(g1);g1.connect(this.sfxBus);o1.start(t);o1.stop(t+0.10);
+    // Rising frequency sweep — the "whip" sound
+    const o2=this.ctx.createOscillator(),g2=this.ctx.createGain();
+    o2.type='square';o2.frequency.setValueAtTime(200,t+0.01);o2.frequency.exponentialRampToValueAtTime(720,t+0.13);
+    g2.gain.setValueAtTime(0.3,t+0.01);g2.gain.exponentialRampToValueAtTime(0.0001,t+0.16);
+    o2.connect(g2);g2.connect(this.sfxBus);o2.start(t+0.01);o2.stop(t+0.17);
   }
   coin(){
     if(!this.ctx||this.muted)return;this.resume();
@@ -492,6 +531,7 @@ class MenuScene extends Phaser.Scene{
     if(this._trackIdx<0)this._trackIdx=0;
     const best=localStorage.getItem('gf_best')||0;
     const reach=localStorage.getItem('gf_level')||1;
+    const savedName=localStorage.getItem('gf_name')||'';
     const charHTML=CHARACTERS.map((ch,i)=>{
       const col='#'+ch.col.toString(16).padStart(6,'0');
       const sel=i===this._charIdx;
@@ -505,7 +545,9 @@ class MenuScene extends Phaser.Scene{
     OV.show('ov-menu',
       `<div class="ov-wrap">
         <div class="ov-title" style="color:#00ffff;text-shadow:3px 3px #0044ff">GRAVITY<br><span style="color:#ff44ff;text-shadow:3px 3px #880088">FLIPPER</span></div>
-        <div class="ov-sub" style="color:#888;margin-top:6px">&#9660; SHIP</div>
+        <div class="ov-sub" style="color:#888;margin-top:6px">&#9660; PILOT NAME</div>
+        <input class="name-input" id="gf-name-inp" type="text" maxlength="12" placeholder="ENTER YOUR NAME..." autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" value="${savedName}">
+        <div class="ov-sub" style="color:#888;margin-top:4px">&#9660; SHIP</div>
         <div class="ch-grid">${charHTML}</div>
         <hr class="ov-rule">
         <div class="ov-sub" style="color:#888">&#9660; TRACK</div>
@@ -513,20 +555,30 @@ class MenuScene extends Phaser.Scene{
         <hr class="ov-rule">
         <div class="ov-sub" style="color:#ffff00">BEST: ${best} PTS</div>
         <div class="ov-sub" style="color:#888">REACHED LEVEL ${reach}</div>
-        <button class="ov-btn" id="ov-start" style="margin-top:10px;border-color:#00ffff;color:#00ffff">&#9654; TAP TO START</button>
+        <button class="ov-btn" id="ov-start" style="margin-top:10px;border-color:#00ffff;color:#00ffff">&#9654; PLAY</button>
+        <button class="ov-btn ov-btn-sm" id="ov-hof" style="border-color:#ffdd00;color:#ffdd00;margin-top:4px">&#9733; HALL OF FAME</button>
         <div class="ov-sub" style="color:#444;margin-top:4px">TAP = FLIP GRAVITY</div>
       </div>`,'rgba(0,0,10,0.96)');
     CHARACTERS.forEach((_,i)=>addTap(document.getElementById('ch'+i),()=>this._pickChar(i)));
     TRACKS.forEach((_,i)=>addTap(document.getElementById('tr'+i),()=>this._pickTrack(i)));
     const go=()=>{
-      AUDIO.init();AUDIO.resume();OV.hide();
+      AUDIO.init();AUDIO.resume();
+      const inp=document.getElementById('gf-name-inp');
+      const nameVal=(inp?inp.value.trim().toUpperCase():'').substring(0,12);
+      if(!nameVal){
+        if(inp){inp.style.borderColor='#ff4444';inp.focus();inp.placeholder='NAME REQUIRED!';}
+        return;
+      }
+      OV.hide();
       localStorage.setItem('gf_char',CHARACTERS[this._charIdx].id);
       localStorage.setItem('gf_track',TRACKS[this._trackIdx].id);
+      localStorage.setItem('gf_name',nameVal);
       this.scene.start('Game',{levelIndex:0,totalScore:0});
     };
     addTap(document.getElementById('ov-start'),go);
+    addTap(document.getElementById('ov-hof'),()=>{OV.hide();this.scene.start('Leaderboard');});
     this.events.once('shutdown',()=>OV.hide());
-    if(this.input.keyboard)this.input.keyboard.once('keydown',go);
+    if(this.input.keyboard)this.input.keyboard.once('keydown-ENTER',go);
   }
   _pickChar(i){
     this._charIdx=i;
@@ -565,7 +617,7 @@ class GameScene extends Phaser.Scene{
     this.coinsCollected=0; this.levelScore=0; this.cameraShake=0;
     this.nextObstacleWorldX=380; this.safetyCoinsSpawned=false; this.trailTimer=0;
     this._nearMissObstacles=new Set(); this._closeCallCooldown=0;
-    this._inputBuf=0; this._ambientT=0;
+    this._inputBuf=0; this._ambientT=0; this._shockwave=null;
     this.laserList=[];
     this._levelPowerup=Math.random()<0.5?'shield':'magnet';
     this.hasShield=false; this.magnetTimer=0; this.powerupType=null; this.powerupMax=0;
@@ -733,6 +785,7 @@ class GameScene extends Phaser.Scene{
   _buildPlayer(){
     const charId=localStorage.getItem('gf_char')||'ship';
     this.player=this.add.image(PLAYER_X,H/2,`char_${charId}`).setScale(2).setDepth(10);
+    this.flipGfx=this.add.graphics().setDepth(12);
     this.shieldAura=this.add.graphics().setDepth(11);
     this.trail=[];
     for(let i=0;i<6;i++) this.trail.push(this.add.image(PLAYER_X,H/2,`char_${charId}`).setScale(2).setAlpha(0.09*(6-i)).setDepth(9));
@@ -751,6 +804,8 @@ class GameScene extends Phaser.Scene{
     this.scoreTxt=this.add.text(10,10,'0',{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#00ffff'}).setDepth(20);
     this.bestTxt=this.add.text(W-10,10,`BEST ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(1,0).setDepth(20);
     this.levelTxt=this.add.text(W/2,10,`LVL ${this.levelIndex+1} \u2022 ${this.theme.name}`,{fontFamily:'"Press Start 2P"',fontSize:'9px',color:'#ff88ff'}).setOrigin(0.5,0).setDepth(20);
+    const pname=localStorage.getItem('gf_name')||'';
+    if(pname)this.add.text(W-10,H-10,pname,{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#444'}).setOrigin(1,1).setDepth(20);
     this.coinTxt=this.add.text(10,30,`\u25c6 0/${this.lvl.required}`,{fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffdd00'}).setDepth(20);
     this.progGfx=this.add.graphics().setDepth(20);
     this.powerupGfx=this.add.graphics().setDepth(20);
@@ -827,15 +882,22 @@ class GameScene extends Phaser.Scene{
     // Gentle push — preserves much of existing momentum, feels floaty
     this.vy=lerp(this.vy,this.gravDir*-FLIP_KICK,0.52);
     this.cameras.main.flash(45,20,60,160,false);
-    this._emitParticles(this.player.x,this.player.y,[0x00ffff,0xff44ff,0xffffff,0xffff00,0x44ffff],16,55,170);
-    for(let i=0;i<6;i++){
+    // Expanding shockwave ring + directional arrow
+    this._shockwave={r:4,maxR:58,color:this.theme.wallLine,x:this.player.x,y:this.player.y,dir:this.gravDir};
+    // Squash & stretch: squeeze horizontal, elongate vertical in flip direction
+    this.tweens.killTweensOf(this.player);
+    this.player.setScale(2);
+    this.tweens.add({targets:this.player,scaleX:1.0,scaleY:3.4,duration:72,yoyo:true,ease:'Sine.easeInOut'});
+    // Directional particle burst — mostly in new gravity direction
+    this._emitParticles(this.player.x,this.player.y,[0x00ffff,0xff44ff,0xffffff,0xffff00,0x44ffff],14,50,160);
+    for(let i=0;i<8;i++){
       let p=this._poolParticle();
       if(!p){p=this.add.image(0,0,'particle').setDepth(15);this.particles.add(p);}
       p.setActive(true).setVisible(true);
       p.x=this.player.x;p.y=this.player.y;
-      p.vx=(Math.random()-0.5)*45;
-      p.vy=this.gravDir<0?-Phaser.Math.Between(75,180):-Phaser.Math.Between(-180,-75);
-      p.life=0.55;p.setTint(0x00ffff);p.setScale(2);
+      p.vx=(Math.random()-0.5)*38;
+      p.vy=this.gravDir<0?-Phaser.Math.Between(80,200):-Phaser.Math.Between(-200,-80);
+      p.life=0.58;p.setTint(this.theme.wallLine);p.setScale(2);
     }
     this.cameraShake=0.05;
     AUDIO.flip();
@@ -1091,6 +1153,26 @@ class GameScene extends Phaser.Scene{
       this.cameras.main.setScroll((Math.random()-0.5)*mag,(Math.random()-0.5)*mag);
     } else this.cameras.main.setScroll(0,0);
 
+    // Shockwave ring + directional arrow
+    this.flipGfx.clear();
+    if(this._shockwave){
+      const sw=this._shockwave;
+      sw.r+=185*dt;
+      sw.alpha=Math.max(0,(1-sw.r/sw.maxR)*0.88);
+      if(sw.alpha<=0){this._shockwave=null;}
+      else {
+        this.flipGfx.lineStyle(3,sw.color,sw.alpha);
+        this.flipGfx.strokeCircle(sw.x,sw.y,sw.r);
+        this.flipGfx.lineStyle(10,sw.color,sw.alpha*0.20);
+        this.flipGfx.strokeCircle(sw.x,sw.y,sw.r);
+        // Directional arrow tip in the direction of new gravity
+        const tipY=sw.y+sw.dir*sw.r;
+        const baseY=sw.y+sw.dir*(sw.r-14);
+        this.flipGfx.fillStyle(0xffffff,sw.alpha*0.85);
+        this.flipGfx.fillTriangle(sw.x-8,baseY,sw.x+8,baseY,sw.x,tipY);
+      }
+    }
+
     // Shield aura
     this.shieldAura.clear();
     if(this.hasShield){
@@ -1271,6 +1353,7 @@ class LevelCompleteScene extends Phaser.Scene{
   init(d){this.levelIndex=d.levelIndex;this.coinsCollected=d.coinsCollected;this.requiredCoins=d.requiredCoins;this.levelScore=d.levelScore;this.totalScore=d.totalScore;this.isLastLevel=d.isLastLevel;}
   create(){
     AUDIO.init();AUDIO.resume();
+    if(this.isLastLevel)saveScore(this.totalScore);
     const nt=getLevelTrack(this.isLastLevel?0:this.levelIndex+1);
     this.cameras.main.setBackgroundColor(nt.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
@@ -1340,6 +1423,7 @@ class DeathScene extends Phaser.Scene{
   init(d){this.levelIndex=d.levelIndex||0;this.finalScore=d.score||0;this.coins=d.coinsCollected||0;}
   create(){
     AUDIO.init();AUDIO.resume();
+    saveScore(this.finalScore);
     const theme=getLevelTrack(this.levelIndex);
     this.cameras.main.setBackgroundColor(theme.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
@@ -1372,11 +1456,40 @@ class DeathScene extends Phaser.Scene{
   }
 }
 
+// ── LeaderboardScene ──────────────────────────────────────────────────────────
+class LeaderboardScene extends Phaser.Scene{
+  constructor(){super('Leaderboard');}
+  create(){
+    AUDIO.init();
+    const myName=(localStorage.getItem('gf_name')||'').toUpperCase();
+    const scores=getScores().slice(0,10);
+    const rowsHTML=scores.length?scores.map((s,i)=>{
+      const isMe=myName&&s.name===myName;
+      const rank=i===0?'\u2605':'#'+(i+1);
+      return `<div class="lb-row${isMe?' lb-me':''}"><span class="lb-rank">${rank}</span><span class="lb-name">${s.name}</span><span class="lb-score">${s.score}</span><span class="lb-date">${s.date}</span></div>`;
+    }).join(''):`<div style="color:#333;font-size:9px;padding:18px 0;text-align:center">NO SCORES YET<br><span style="color:#222;font-size:7px">PLAY A GAME FIRST</span></div>`;
+    OV.show('ov-lb',
+      `<div class="ov-wrap">
+        <div class="ov-title" style="color:#ffdd00;text-shadow:3px 3px #886600">\u2605 HALL OF FAME</div>
+        <div class="ov-sub" style="color:#555;margin-bottom:4px">TOP SCORES</div>
+        <div class="lb-list">${rowsHTML}</div>
+        <button class="ov-btn" id="lb-back" style="margin-top:14px;border-color:#00ffff;color:#00ffff">\u25c4 BACK</button>
+        <button class="ov-btn ov-btn-sm" id="lb-clear" style="color:#222;border-color:#1a1a1a;margin-top:2px">CLEAR SCORES</button>
+      </div>`,'rgba(0,0,8,0.97)');
+    addTap(document.getElementById('lb-back'),()=>{OV.hide();this.scene.start('Menu');});
+    addTap(document.getElementById('lb-clear'),()=>{
+      if(confirm('Clear all scores from the leaderboard?')){localStorage.removeItem('gf_scores');OV.hide();this.scene.restart();}
+    });
+    this.events.once('shutdown',()=>OV.hide());
+    if(this.input.keyboard)this.input.keyboard.once('keydown-ESCAPE',()=>{OV.hide();this.scene.start('Menu');});
+  }
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 new Phaser.Game({
   type:Phaser.AUTO,width:W,height:H,backgroundColor:'#000011',parent:document.body,
   scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},
-  scene:[BootScene,MenuScene,GameScene,LevelCompleteScene,LevelFailedScene,DeathScene],
+  scene:[BootScene,MenuScene,LeaderboardScene,GameScene,LevelCompleteScene,LevelFailedScene,DeathScene],
   fps:{target:60,forceSetTimeOut:false},
   render:{pixelArt:true,antialias:false}
 });
