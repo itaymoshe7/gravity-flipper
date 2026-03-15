@@ -49,10 +49,6 @@
   .tr-swatch{width:68%;height:10px;border-radius:3px;}
   /* 5th track button spans both columns when alone on its row */
   .tr-grid .tr-btn:last-child:nth-child(odd){grid-column:1/-1;max-width:calc(50% - 4px);margin:0 auto;}
-  /* 5th character button (selfie) centered when alone on its row */
-  .ch-grid .ch-btn:last-child:nth-child(odd){grid-column:1/-1;max-width:calc(50% - 4px);margin:0 auto;}
-  /* selfie character preview inside ch-btn */
-  .ch-selfie-img{width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;}
   /* player name input */
   .name-input{width:100%;padding:11px 14px;margin:6px 0;font-family:"Press Start 2P",monospace;
               font-size:clamp(10px,2.8vw,13px);background:#0a0a18;border:2px solid #334;
@@ -176,7 +172,7 @@ function wireShareBtns(containerId,name,score){
   cont.innerHTML=`<button class="ov-btn ov-btn-sm" id="${containerId}-t" style="border-color:#ff88ff;color:#ff88ff">\u2694 CHALLENGE A FRIEND</button>`;
   addTap(document.getElementById(`${containerId}-t`),()=>{
     // Step 2: replace with share options
-    const msg=encodeURIComponent(`\uD83C\uDFAE I scored ${score} points in Gravity Flipper! Think you can beat me? Accept my challenge here: ${url}`);
+    const msg=encodeURIComponent(`\uD83C\uDFAE I scored ${score} points in Gravity Flipper! Think you can beat me? \uD83D\uDC49 ${url}`);
     cont.innerHTML=`
       <div class="ov-sub" style="color:#888;margin:6px 0 4px">SHARE VIA</div>
       <button class="share-btn share-wa" id="${containerId}-wa">\uD83D\uDCAC WHATSAPP</button>
@@ -227,11 +223,10 @@ function getLevelTrack(lvlIdx){
 
 // ── Character definitions ─────────────────────────────────────────────────────
 const CHARACTERS=[
-  {id:'ship',   name:'SHIP',   col:0x00ffff, desc:'CLASSIC'},
-  {id:'cube',   name:'CUBE',   col:0x44ff88, desc:'HEAVY'},
-  {id:'dart',   name:'DART',   col:0xff8844, desc:'FAST'},
-  {id:'orb',    name:'ORB',    col:0xff44ff, desc:'ROUND'},
-  {id:'selfie', name:'SELFIE', col:0xff88cc, desc:'YOUR FACE'},
+  {id:'ship', name:'SHIP',  col:0x00ffff, desc:'CLASSIC'},
+  {id:'cube', name:'CUBE',  col:0x44ff88, desc:'HEAVY'},
+  {id:'dart', name:'DART',  col:0xff8844, desc:'FAST'},
+  {id:'orb',  name:'ORB',   col:0xff44ff, desc:'ROUND'},
 ];
 
 // ── Level definitions ─────────────────────────────────────────────────────────
@@ -636,21 +631,7 @@ class BootScene extends Phaser.Scene{
     g.clear();g.fillStyle(0xffffff);g.fillRect(0,0,2,2);g.generateTexture('star',2,2);
     g.destroy();
   }
-  create(){
-    INPUT.init(this.sys.game.canvas);
-    const selfieData=localStorage.getItem('gf_selfie');
-    if(selfieData){
-      const img=new Image();
-      img.onload=()=>{
-        if(!this.textures.exists('char_selfie'))this.textures.addImage('char_selfie',img);
-        this.scene.start('Menu');
-      };
-      img.onerror=()=>this.scene.start('Menu');
-      img.src=selfieData;
-    } else {
-      this.scene.start('Menu');
-    }
-  }
+  create(){INPUT.init(this.sys.game.canvas);this.scene.start('Menu');}
 }
 
 // ── MenuScene ─────────────────────────────────────────────────────────────────
@@ -691,16 +672,9 @@ class MenuScene extends Phaser.Scene{
     const reach=localStorage.getItem('gf_level')||1;
     const savedName=localStorage.getItem('gf_name')||'';
     const nameValid=savedName.replace(/\s/g,'').length>=2;
-    const selfieData=localStorage.getItem('gf_selfie');
     const charHTML=CHARACTERS.map((ch,i)=>{
       const col='#'+ch.col.toString(16).padStart(6,'0');
       const sel=i===this._charIdx;
-      if(ch.id==='selfie'){
-        const inner=selfieData
-          ?`<img class="ch-selfie-img" src="${selfieData}" alt="selfie">`
-          :`\uD83D\uDCF7<br><span style="color:#666;font-size:7px">${ch.desc}</span>`;
-        return `<button class="ch-btn${sel?' sel':''}" id="ch${i}" style="${sel?'border-color:'+col+';':''}">${inner}</button>`;
-      }
       return `<button class="ch-btn${sel?' sel':''}" id="ch${i}" style="${sel?'border-color:'+col+';':''}">${ch.name}<br><span style="color:#666;font-size:7px">${ch.desc}</span></button>`;
     }).join('');
     const trackHTML=TRACKS.map((tr,i)=>{
@@ -760,7 +734,6 @@ class MenuScene extends Phaser.Scene{
       b.className='ch-btn'+(sel?' sel':'');
       b.style.borderColor=sel?col:'#334455';
     });
-    if(CHARACTERS[i].id==='selfie')this._showSelfieCapture();
   }
   _pickTrack(i){
     this._trackIdx=i;
@@ -769,92 +742,6 @@ class MenuScene extends Phaser.Scene{
       const sel=j===i;
       b.className='tr-btn'+(sel?' sel':'');
       b.style.borderColor=sel?tr.previewGrad[0]:'#334455';
-    });
-  }
-  _showSelfieCapture(){
-    const scene=this;
-    let stream=null;
-    const show=(body)=>OV.show('ov-selfie',body,'rgba(0,0,10,0.98)');
-    show(`<div class="ov-wrap">
-      <div class="ov-title" style="color:#ff88cc">\uD83D\uDCF7 SELFIE</div>
-      <div class="ov-sub" style="color:#888;margin:6px 0 10px">Starting camera\u2026</div>
-    </div>`);
-    navigator.mediaDevices&&navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false})
-    .then(s=>{
-      stream=s;
-      show(`<div class="ov-wrap">
-        <div class="ov-title" style="color:#ff88cc">\uD83D\uDCF7 SELFIE</div>
-        <div style="width:160px;height:160px;border-radius:50%;overflow:hidden;margin:10px auto;border:3px solid #ff88cc;position:relative;">
-          <video id="selfie-vid" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;"></video>
-        </div>
-        <button class="ov-btn" id="selfie-snap" style="border-color:#ff88cc;color:#ff88cc">\u2605 SNAP</button>
-        <button class="ov-btn ov-btn-sm" id="selfie-cancel">CANCEL</button>
-      </div>`);
-      const vid=document.getElementById('selfie-vid');
-      if(vid){vid.srcObject=stream;vid.play().catch(()=>{});}
-      addTap(document.getElementById('selfie-snap'),()=>{
-        const v=document.getElementById('selfie-vid');
-        if(!v)return;
-        const SIZE=64;
-        const c=document.createElement('canvas');c.width=SIZE;c.height=SIZE;
-        const ctx=c.getContext('2d');
-        // circle clip
-        ctx.save();
-        ctx.beginPath();ctx.arc(SIZE/2,SIZE/2,SIZE/2,0,Math.PI*2);ctx.clip();
-        // mirror + draw
-        ctx.translate(SIZE,0);ctx.scale(-1,1);
-        const vw=v.videoWidth||SIZE,vh=v.videoHeight||SIZE;
-        const sq=Math.min(vw,vh);
-        const ox=(vw-sq)/2,oy=(vh-sq)/2;
-        ctx.drawImage(v,ox,oy,sq,sq,0,0,SIZE,SIZE);
-        ctx.restore();
-        // pixel-art border ring
-        ctx.strokeStyle='#ff88cc';ctx.lineWidth=3;
-        ctx.beginPath();ctx.arc(SIZE/2,SIZE/2,SIZE/2-1,0,Math.PI*2);ctx.stroke();
-        // corner dots (45° intervals)
-        ctx.fillStyle='#ffffff';
-        [0,45,90,135,180,225,270,315].forEach(deg=>{
-          const r=Math.PI*deg/180,rx=SIZE/2+(SIZE/2-3)*Math.cos(r),ry=SIZE/2+(SIZE/2-3)*Math.sin(r);
-          ctx.fillRect(rx-1,ry-1,2,2);
-        });
-        const dataUrl=c.toDataURL('image/png');
-        // stop camera
-        stream.getTracks().forEach(t=>t.stop());stream=null;
-        // preview for confirm
-        show(`<div class="ov-wrap">
-          <div class="ov-title" style="color:#ff88cc">\uD83D\uDCF7 SELFIE</div>
-          <img src="${dataUrl}" style="width:96px;height:96px;border-radius:50%;border:3px solid #ff88cc;display:block;margin:10px auto;">
-          <button class="ov-btn" id="selfie-use" style="border-color:#00ff88;color:#00ff88">\u2713 USE THIS PHOTO</button>
-          <button class="ov-btn ov-btn-sm" id="selfie-retake">RETAKE</button>
-          <button class="ov-btn ov-btn-sm" id="selfie-cancel2">CANCEL</button>
-        </div>`);
-        addTap(document.getElementById('selfie-use'),()=>{
-          localStorage.setItem('gf_selfie',dataUrl);
-          // load into Phaser texture
-          const img=new Image();
-          img.onload=()=>{
-            if(scene.textures.exists('char_selfie'))scene.textures.remove('char_selfie');
-            scene.textures.addImage('char_selfie',img);
-            OV.hide();
-            scene._buildMenu();
-          };
-          img.src=dataUrl;
-        });
-        addTap(document.getElementById('selfie-retake'),()=>{OV.hide();scene._showSelfieCapture();});
-        addTap(document.getElementById('selfie-cancel2'),()=>{OV.hide();});
-      });
-      addTap(document.getElementById('selfie-cancel'),()=>{
-        if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
-        OV.hide();
-      });
-    })
-    .catch(()=>{
-      show(`<div class="ov-wrap">
-        <div class="ov-title" style="color:#ff4444">\u26A0 NO CAMERA</div>
-        <div class="ov-sub" style="color:#aaa;margin:10px 0">Camera not available or permission denied.</div>
-        <button class="ov-btn ov-btn-sm" id="selfie-err-ok">OK</button>
-      </div>`);
-      addTap(document.getElementById('selfie-err-ok'),()=>OV.hide());
     });
   }
 }
