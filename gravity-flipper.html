@@ -36,6 +36,16 @@
           gap:4px;width:100%;box-sizing:border-box;}
   .ch-btn.sel{background:#1a1a44;color:#fff;}
   .ch-btn:active,.ch-btn.sel:active{background:#252566;}
+  /* track select grid */
+  .tr-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;}
+  .tr-btn{min-height:58px;padding:6px 4px;background:#0a110a;border:2px solid #334455;
+          color:#888;font-family:"Press Start 2P",monospace;font-size:7px;cursor:pointer;
+          touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+          display:flex;flex-direction:column;align-items:center;justify-content:center;
+          gap:5px;width:100%;box-sizing:border-box;}
+  .tr-btn.sel{color:#fff;}
+  .tr-btn:active,.tr-btn.sel:active{filter:brightness(1.25);}
+  .tr-swatch{width:68%;height:10px;border-radius:3px;}
 </style>
 </head>
 <body>
@@ -63,6 +73,19 @@ const THEMES=[
   {bg:'#050505',wallFill:0x0f0f0f,wallLine:0xffffff,wallGlow:0x555555,blockTint:0xcccccc,spikeTint:0xffffff,laserCol:0xffffff,name:'VOID BLACK'},
 ];
 function getTheme(n){return THEMES[Math.min(n,THEMES.length-1)];}
+
+// ── Player-selectable track styles ────────────────────────────────────────────
+const TRACKS=[
+  {id:'neon', name:'NEON CITY',  previewGrad:['#00ccff','#8800ff'],
+   bg:'#000011',wallFill:0x000a1a,wallLine:0x0099ff,wallGlow:0x003366,blockTint:0xaaddff,spikeTint:0xff5555,laserCol:0xff0066},
+  {id:'lava', name:'LAVA CAVE',  previewGrad:['#ff8800','#ff2200'],
+   bg:'#0f0800',wallFill:0x1a0c00,wallLine:0xff8800,wallGlow:0x882200,blockTint:0xffbb55,spikeTint:0xff4400,laserCol:0xff6600},
+  {id:'ice',  name:'ICE TUNNEL', previewGrad:['#88ddff','#eef8ff'],
+   bg:'#000a14',wallFill:0x001a2a,wallLine:0x66ccff,wallGlow:0x003355,blockTint:0xaaddff,spikeTint:0xffffff,laserCol:0x00ccff},
+  {id:'cyber',name:'CYBER GRID', previewGrad:['#00ff44','#004422'],
+   bg:'#000800',wallFill:0x001200,wallLine:0x00ff44,wallGlow:0x004422,blockTint:0x88ffaa,spikeTint:0xffff00,laserCol:0x00ff44},
+];
+function getTrack(){const id=localStorage.getItem('gf_track')||'neon';return TRACKS.find(t=>t.id===id)||TRACKS[0];}
 
 // ── Character definitions ─────────────────────────────────────────────────────
 const CHARACTERS=[
@@ -166,6 +189,13 @@ class AudioMgr{
     o.type='sine';o.frequency.setValueAtTime(440,t);o.frequency.exponentialRampToValueAtTime(880,t+0.22);
     g.gain.setValueAtTime(0.25,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.28);
     o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.30);
+  }
+  nearMiss(){
+    if(!this.ctx||this.muted)return;this.resume();
+    const t=this.ctx.currentTime,o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type='sawtooth';o.frequency.setValueAtTime(700,t);o.frequency.exponentialRampToValueAtTime(180,t+0.09);
+    g.gain.setValueAtTime(0.14,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.11);
+    o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.12);
   }
 
   // ── Music ───────────────────────────────────────────────────────────────────
@@ -445,38 +475,64 @@ class MenuScene extends Phaser.Scene{
   constructor(){super('Menu');}
   create(){
     AUDIO.init();
-    this._selIdx=CHARACTERS.findIndex(c=>c.id===(localStorage.getItem('gf_char')||'ship'));
-    if(this._selIdx<0)this._selIdx=0;
+    this._charIdx=CHARACTERS.findIndex(c=>c.id===(localStorage.getItem('gf_char')||'ship'));
+    if(this._charIdx<0)this._charIdx=0;
+    this._trackIdx=TRACKS.findIndex(t=>t.id===(localStorage.getItem('gf_track')||'neon'));
+    if(this._trackIdx<0)this._trackIdx=0;
     const best=localStorage.getItem('gf_best')||0;
     const reach=localStorage.getItem('gf_level')||1;
     const charHTML=CHARACTERS.map((ch,i)=>{
       const col='#'+ch.col.toString(16).padStart(6,'0');
-      const sel=i===this._selIdx;
+      const sel=i===this._charIdx;
       return `<button class="ch-btn${sel?' sel':''}" id="ch${i}" style="${sel?'border-color:'+col+';':''}">${ch.name}<br><span style="color:#666;font-size:7px">${ch.desc}</span></button>`;
+    }).join('');
+    const trackHTML=TRACKS.map((tr,i)=>{
+      const sel=i===this._trackIdx;
+      const c1=tr.previewGrad[0],c2=tr.previewGrad[1];
+      return `<button class="tr-btn${sel?' sel':''}" id="tr${i}" style="border-color:${sel?c1:'#334455'};"><div class="tr-swatch" style="background:linear-gradient(90deg,${c1},${c2})"></div>${tr.name}</button>`;
     }).join('');
     OV.show('ov-menu',
       `<div class="ov-wrap">
         <div class="ov-title" style="color:#00ffff;text-shadow:3px 3px #0044ff">GRAVITY<br><span style="color:#ff44ff;text-shadow:3px 3px #880088">FLIPPER</span></div>
-        <div class="ov-sub" style="color:#888;margin-top:8px">CHOOSE YOUR SHIP</div>
+        <div class="ov-sub" style="color:#888;margin-top:6px">&#9660; SHIP</div>
         <div class="ch-grid">${charHTML}</div>
+        <hr class="ov-rule">
+        <div class="ov-sub" style="color:#888">&#9660; TRACK</div>
+        <div class="tr-grid">${trackHTML}</div>
+        <hr class="ov-rule">
         <div class="ov-sub" style="color:#ffff00">BEST: ${best} PTS</div>
         <div class="ov-sub" style="color:#888">REACHED LEVEL ${reach}</div>
-        <button class="ov-btn" id="ov-start" style="margin-top:14px;border-color:#00ffff;color:#00ffff">\u25b6 TAP TO START</button>
-        <div class="ov-sub" style="color:#444;margin-top:6px">TAP = FLIP GRAVITY</div>
+        <button class="ov-btn" id="ov-start" style="margin-top:10px;border-color:#00ffff;color:#00ffff">&#9654; TAP TO START</button>
+        <div class="ov-sub" style="color:#444;margin-top:4px">TAP = FLIP GRAVITY</div>
       </div>`,'rgba(0,0,10,0.96)');
-    CHARACTERS.forEach((_,i)=>addTap(document.getElementById('ch'+i),()=>this._selChar(i)));
-    const go=()=>{AUDIO.init();AUDIO.resume();OV.hide();localStorage.setItem('gf_char',CHARACTERS[this._selIdx].id);this.scene.start('Game',{levelIndex:0,totalScore:0});};
+    CHARACTERS.forEach((_,i)=>addTap(document.getElementById('ch'+i),()=>this._pickChar(i)));
+    TRACKS.forEach((_,i)=>addTap(document.getElementById('tr'+i),()=>this._pickTrack(i)));
+    const go=()=>{
+      AUDIO.init();AUDIO.resume();OV.hide();
+      localStorage.setItem('gf_char',CHARACTERS[this._charIdx].id);
+      localStorage.setItem('gf_track',TRACKS[this._trackIdx].id);
+      this.scene.start('Game',{levelIndex:0,totalScore:0});
+    };
     addTap(document.getElementById('ov-start'),go);
     this.events.once('shutdown',()=>OV.hide());
     if(this.input.keyboard)this.input.keyboard.once('keydown',go);
   }
-  _selChar(i){
-    this._selIdx=i;
+  _pickChar(i){
+    this._charIdx=i;
     CHARACTERS.forEach((ch,j)=>{
-      const b=document.getElementById('ch'+j); if(!b)return;
-      const sel=j===i, col='#'+ch.col.toString(16).padStart(6,'0');
+      const b=document.getElementById('ch'+j);if(!b)return;
+      const sel=j===i,col='#'+ch.col.toString(16).padStart(6,'0');
       b.className='ch-btn'+(sel?' sel':'');
       b.style.borderColor=sel?col:'#334455';
+    });
+  }
+  _pickTrack(i){
+    this._trackIdx=i;
+    TRACKS.forEach((tr,j)=>{
+      const b=document.getElementById('tr'+j);if(!b)return;
+      const sel=j===i;
+      b.className='tr-btn'+(sel?' sel':'');
+      b.style.borderColor=sel?tr.previewGrad[0]:'#334455';
     });
   }
 }
@@ -488,7 +544,7 @@ class GameScene extends Phaser.Scene{
 
   create(){
     this.lvl=getLevel(this.levelIndex);
-    this.theme=getTheme(this.levelIndex);
+    this.theme=getTrack();
     this.cameras.main.setBackgroundColor(this.theme.bg);
     AUDIO.init(); AUDIO.resume();
 
@@ -497,6 +553,7 @@ class GameScene extends Phaser.Scene{
     this.distTraveled=0; this.flipCooldown=0;
     this.coinsCollected=0; this.levelScore=0; this.cameraShake=0;
     this.nextObstacleWorldX=380; this.safetyCoinsSpawned=false; this.trailTimer=0;
+    this._nearMissObstacles=new Set(); this._closeCallCooldown=0;
     this.laserList=[];
     this._levelPowerup=Math.random()<0.5?'shield':'magnet';
     this.hasShield=false; this.magnetTimer=0; this.powerupType=null; this.powerupMax=0;
@@ -771,6 +828,7 @@ class GameScene extends Phaser.Scene{
     if(!this.gameStarted)return;
 
     this.flipCooldown=Math.max(0,this.flipCooldown-dt);
+    this._closeCallCooldown=Math.max(0,this._closeCallCooldown-dt);
     const prog=clamp(this.distTraveled/this.lvl.distance,0,1);
     // Non-linear: ease in slow, ramp hard in final 30%
     const isIntense=prog>0.70;
@@ -807,7 +865,11 @@ class GameScene extends Phaser.Scene{
       obs.x-=this.speed*dt;
       if(obs.obstacleType==='moving'){obs.y+=obs.moveSpeed*dt;if(obs.y<obs.minY||obs.y>obs.maxY)obs.moveSpeed*=-1;}
       if(this._aabb(this.player,obs)){this._die();return;}
-      if(obs.x<-60)this.obstacles.remove(obs,true,true);
+      if(!this._nearMissObstacles.has(obs)&&this._nearMissCheck(this.player,obs)){
+        this._nearMissObstacles.add(obs);
+        this._triggerNearMiss(obs);
+      }
+      if(obs.x<-60){this._nearMissObstacles.delete(obs);this.obstacles.remove(obs,true,true);}
     }
 
     for(let i=this.laserList.length-1;i>=0;i--){
@@ -929,6 +991,33 @@ class GameScene extends Phaser.Scene{
     return Math.abs(a.x-b.x)<(aw+bw)/2&&Math.abs(a.y-b.y)<(ah+bh)/2;
   }
 
+  // Near-miss zone: player graphic size (~50%) vs obstacle wider collision zone (~70%)
+  _nearMissCheck(a,b){
+    const aw=a.displayWidth*0.50,ah=a.displayHeight*0.50,bw=b.displayWidth*0.70,bh=b.displayHeight*0.70;
+    return Math.abs(a.x-b.x)<(aw+bw)/2&&Math.abs(a.y-b.y)<(ah+bh)/2;
+  }
+
+  _triggerNearMiss(obs){
+    // Flash obstacle red
+    const origTint=obs.obstacleType==='spike'?this.theme.spikeTint:this.theme.blockTint;
+    obs.setTint(0xff2222);
+    this.time.delayedCall(160,()=>{if(obs.scene)obs.setTint(origTint);});
+    // Sparks at nearest point on obstacle surface
+    const nx=clamp(this.player.x,obs.x-obs.displayWidth*0.5,obs.x+obs.displayWidth*0.5);
+    const ny=clamp(this.player.y,obs.y-obs.displayHeight*0.5,obs.y+obs.displayHeight*0.5);
+    this._emitParticles(nx,ny,[0xff3333,0xff8800,0xffdd44,0xffffff],10,35,120);
+    // Light shake (softer than death)
+    this.cameraShake=Math.max(this.cameraShake,0.038);
+    // Screen tint flash
+    this.cameras.main.flash(55,255,60,0,false);
+    // "CLOSE CALL!" text — rate-limited so it doesn't spam
+    if(this._closeCallCooldown<=0){
+      this._floatText(this.player.x,this.player.y-40,'CLOSE CALL!','#ff5555');
+      this._closeCallCooldown=1.4;
+    }
+    AUDIO.nearMiss();
+  }
+
   _floatText(x,y,txt,color='#ffdd00'){
     const t=this.add.text(x,y,txt,{fontFamily:'"Press Start 2P"',fontSize:'10px',color,shadow:{x:1,y:1,color:'#000000',blur:0,fill:true}}).setOrigin(0.5).setDepth(25);
     this.tweens.add({targets:t,y:y-48,alpha:0,duration:780,ease:'Power2',onComplete:()=>t.destroy()});
@@ -1009,7 +1098,7 @@ class LevelCompleteScene extends Phaser.Scene{
   init(d){this.levelIndex=d.levelIndex;this.coinsCollected=d.coinsCollected;this.requiredCoins=d.requiredCoins;this.levelScore=d.levelScore;this.totalScore=d.totalScore;this.isLastLevel=d.isLastLevel;}
   create(){
     AUDIO.init();AUDIO.resume();
-    const nt=getTheme(this.isLastLevel?0:this.levelIndex+1);
+    const nt=getTrack();
     this.cameras.main.setBackgroundColor(nt.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     const coinBonus=this.coinsCollected*100, isNew=this.totalScore>=best&&this.totalScore>0;
@@ -1027,7 +1116,7 @@ class LevelCompleteScene extends Phaser.Scene{
         <div class="ov-sub" style="color:#888">TOTAL SCORE</div>
         <div class="ov-score" style="color:${isNew?'#ffff00':'#ffffff'}">${this.totalScore}</div>
         ${isNew?'<div class="ov-sub" style="color:#ffff00">\u2605 NEW BEST! \u2605</div>':''}
-        ${!this.isLastLevel?`<div class="ov-sub" style="color:#aaa">NEXT: LVL ${this.levelIndex+2} \u2022 ${getTheme(this.levelIndex+1).name}</div>`:''}
+        ${!this.isLastLevel?`<div class="ov-sub" style="color:#aaa">NEXT: LVL ${this.levelIndex+2} \u2022 ${nt.name}</div>`:''}
         <button class="ov-btn" id="ov-next" style="margin-top:16px;border-color:#00ff88;color:#00ff88">${this.isLastLevel?'\u25b6 PLAY AGAIN':'\u25b6 LEVEL '+(this.levelIndex+2)}</button>
       </div>`);
     this.events.once('shutdown',()=>OV.hide());
@@ -1046,7 +1135,7 @@ class LevelFailedScene extends Phaser.Scene{
   init(d){this.levelIndex=d.levelIndex;this.coinsCollected=d.coinsCollected;this.requiredCoins=d.requiredCoins;this.levelScore=d.levelScore;this.totalScore=d.totalScore;}
   create(){
     AUDIO.init();AUDIO.resume();
-    const theme=getTheme(this.levelIndex);
+    const theme=getTrack();
     this.cameras.main.setBackgroundColor(theme.bg);
     const short=this.requiredCoins-this.coinsCollected;
     OV.show('ov-failed',
@@ -1078,7 +1167,7 @@ class DeathScene extends Phaser.Scene{
   init(d){this.levelIndex=d.levelIndex||0;this.finalScore=d.score||0;this.coins=d.coinsCollected||0;}
   create(){
     AUDIO.init();AUDIO.resume();
-    const theme=getTheme(this.levelIndex);
+    const theme=getTrack();
     this.cameras.main.setBackgroundColor(theme.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     const isNew=this.finalScore>=best&&this.finalScore>0;
