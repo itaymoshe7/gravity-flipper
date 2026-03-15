@@ -27,6 +27,7 @@
           user-select:none;letter-spacing:1px;box-sizing:border-box;}
   .ov-btn:active{background:rgba(255,255,255,0.15);}
   .ov-btn-sm{font-size:clamp(9px,2.5vw,11px);min-height:46px;border-color:#555;color:#888;}
+  .ov-btn-disabled{opacity:0.3;pointer-events:none;border-color:#444!important;color:#444!important;}
   /* character select grid */
   .ch-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;}
   .ch-btn{min-height:62px;padding:8px 4px;background:#111122;border:2px solid #334455;
@@ -67,10 +68,15 @@
   .lb-row:first-child .lb-rank,.lb-row:first-child .lb-name,.lb-row:first-child .lb-score{color:#ffdd00;}
   .lb-me{background:rgba(0,255,255,0.06);}
   .lb-me .lb-rank,.lb-me .lb-name,.lb-me .lb-score{color:#00ffff!important;}
+  /* spinner for async leaderboard */
+  .lb-spin{display:inline-block;width:14px;height:14px;border:2px solid #1a1a2a;border-top-color:#00ffff;border-radius:50%;animation:lb-s 0.7s linear infinite;vertical-align:middle;}
+  @keyframes lb-s{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
 'use strict';
 
@@ -83,6 +89,70 @@ const INPUT_BUFFER=0.11;   // seconds: queue a flip tapped during cooldown
 
 function lerp(a,b,t){return a+(b-a)*t;}
 function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+
+// ── Challenge URL parsing ──────────────────────────────────────────────────────
+const CHALLENGE=(function(){
+  try{
+    const raw=new URLSearchParams(window.location.search).get('challenge');
+    if(raw){const col=raw.lastIndexOf(':');if(col>0){const name=decodeURIComponent(raw.slice(0,col)).toUpperCase().substring(0,12);const score=parseInt(raw.slice(col+1));if(name&&score>0)return{active:true,name,score};}}
+  }catch(e){}
+  return{active:false,name:'',score:0};
+})();
+
+// ── Firebase / Firestore ───────────────────────────────────────────────────────
+const FSTORE=(function(){
+  let _db=null;
+  try{
+    if(typeof firebase!=='undefined'){
+      firebase.initializeApp({
+        apiKey:'AIzaSyD0x-sgEkfBUc3C1VhSlxMItYWROcBHAzk',
+        authDomain:'gravity-flipper-2605.firebaseapp.com',
+        projectId:'gravity-flipper-2605',
+        storageBucket:'gravity-flipper-2605.firebasestorage.app',
+        messagingSenderId:'316641691259',
+        appId:'1:316641691259:web:c4a36e0fff3af835d684de'
+      });
+      _db=firebase.firestore();
+    }
+  }catch(e){console.warn('Firebase:',e);}
+  return{
+    save(name,score,level){
+      if(!_db)return;
+      const now=new Date();
+      _db.collection('scores').add({name,score,level:level+1,date:`${now.getMonth()+1}/${now.getDate()}`}).catch(e=>e);
+    },
+    top(n){
+      n=n||10;
+      if(!_db)return Promise.resolve(null);
+      return _db.collection('scores').orderBy('score','desc').limit(n).get()
+        .then(snap=>snap.docs.map(d=>d.data()))
+        .catch(()=>null);
+    }
+  };
+})();
+
+// ── LB / challenge helpers ─────────────────────────────────────────────────────
+function makeLbRows(scores,myName){
+  if(!scores||!scores.length)return'<div style="color:#333;font-size:9px;padding:10px 0;text-align:center">NO SCORES YET</div>';
+  return scores.slice(0,10).map((s,i)=>{
+    const isMe=myName&&s.name===myName;
+    const rank=i===0?'\u2605':'#'+(i+1);
+    return`<div class="lb-row${isMe?' lb-me':''}"><span class="lb-rank">${rank}</span><span class="lb-name">${s.name}</span><span class="lb-score">${s.score}</span></div>`;
+  }).join('');
+}
+function fillLbAsync(containerId,myName){
+  FSTORE.top(10).then(fb=>{const el=document.getElementById(containerId);if(el)el.innerHTML=makeLbRows(fb||getScores(),myName);});
+}
+function makeChallengeUrl(name,score){
+  return`${location.href.split('?')[0]}?challenge=${encodeURIComponent(name)}:${score}`;
+}
+function wireCopyLink(btnId,url){
+  const btn=document.getElementById(btnId);if(!btn)return;
+  addTap(btn,()=>{
+    (navigator.clipboard?navigator.clipboard.writeText(url).catch(()=>prompt('Copy link:',url)):Promise.resolve(prompt('Copy link:',url)));
+    btn.textContent='\u2713 COPIED!';btn.style.color='#00ff88';btn.style.borderColor='#00ff88';
+  });
+}
 
 // ── Visual themes (one per level) ─────────────────────────────────────────────
 const THEMES=[
@@ -139,7 +209,7 @@ const LEVELS=[
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
 
 // ── Leaderboard helpers ───────────────────────────────────────────────────────
-function saveScore(score){
+function saveScore(score,levelIndex){
   if(!score||score<=0)return;
   const name=(localStorage.getItem('gf_name')||'UNKNOWN').trim().toUpperCase().substring(0,12)||'UNKNOWN';
   const now=new Date();
@@ -148,6 +218,7 @@ function saveScore(score){
   scores.push({name,score,date});
   scores.sort((a,b)=>b.score-a.score);
   localStorage.setItem('gf_scores',JSON.stringify(scores.slice(0,20)));
+  FSTORE.save(name,score,levelIndex||0);
 }
 function getScores(){return JSON.parse(localStorage.getItem('gf_scores')||'[]');}
 
@@ -313,6 +384,15 @@ class AudioMgr{
   stopMusic(){
     this._mPlaying=false;
     if(this._mTimer)clearTimeout(this._mTimer);
+  }
+  pauseMusic(){
+    if(this._mTimer)clearTimeout(this._mTimer);
+    this._mTimer=null;
+    if(this.ctx&&this.ctx.state==='running')this.ctx.suspend();
+  }
+  resumeMusic(){
+    if(this.ctx&&this.ctx.state==='suspended')
+      this.ctx.resume().then(()=>{if(this._mPlaying)this._musicLoop();});
   }
   _musicLoop(){
     if(!this._mPlaying)return;
@@ -532,6 +612,7 @@ class MenuScene extends Phaser.Scene{
     const best=localStorage.getItem('gf_best')||0;
     const reach=localStorage.getItem('gf_level')||1;
     const savedName=localStorage.getItem('gf_name')||'';
+    const nameValid=savedName.replace(/\s/g,'').length>=2;
     const charHTML=CHARACTERS.map((ch,i)=>{
       const col='#'+ch.col.toString(16).padStart(6,'0');
       const sel=i===this._charIdx;
@@ -545,6 +626,7 @@ class MenuScene extends Phaser.Scene{
     OV.show('ov-menu',
       `<div class="ov-wrap">
         <div class="ov-title" style="color:#00ffff;text-shadow:3px 3px #0044ff">GRAVITY<br><span style="color:#ff44ff;text-shadow:3px 3px #880088">FLIPPER</span></div>
+        ${CHALLENGE.active?`<div style="border:1px solid #ff44ff;padding:8px 6px;margin:8px 0 4px;font-size:clamp(8px,2.2vw,9px);line-height:1.7"><span style="color:#ff44ff">\u2694 CHALLENGE FROM ${CHALLENGE.name}</span><br><span style="color:#ffdd00">BEAT: ${CHALLENGE.score} PTS</span></div>`:''}
         <div class="ov-sub" style="color:#888;margin-top:6px">&#9660; PILOT NAME</div>
         <input class="name-input" id="gf-name-inp" type="text" maxlength="12" placeholder="ENTER YOUR NAME..." autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" value="${savedName}">
         <div class="ov-sub" style="color:#888;margin-top:4px">&#9660; SHIP</div>
@@ -555,7 +637,7 @@ class MenuScene extends Phaser.Scene{
         <hr class="ov-rule">
         <div class="ov-sub" style="color:#ffff00">BEST: ${best} PTS</div>
         <div class="ov-sub" style="color:#888">REACHED LEVEL ${reach}</div>
-        <button class="ov-btn" id="ov-start" style="margin-top:10px;border-color:#00ffff;color:#00ffff">&#9654; PLAY</button>
+        <button class="ov-btn${nameValid?'':' ov-btn-disabled'}" id="ov-start" style="margin-top:10px;border-color:${nameValid?'#00ffff':'#444'};color:${nameValid?'#00ffff':'#444'}">&#9654; PLAY</button>
         <button class="ov-btn ov-btn-sm" id="ov-hof" style="border-color:#ffdd00;color:#ffdd00;margin-top:4px">&#9733; HALL OF FAME</button>
         <div class="ov-sub" style="color:#444;margin-top:4px">TAP = FLIP GRAVITY</div>
       </div>`,'rgba(0,0,10,0.96)');
@@ -577,6 +659,13 @@ class MenuScene extends Phaser.Scene{
     };
     addTap(document.getElementById('ov-start'),go);
     addTap(document.getElementById('ov-hof'),()=>{OV.hide();this.scene.start('Leaderboard');});
+    const nameInp=document.getElementById('gf-name-inp');
+    if(nameInp)nameInp.addEventListener('input',()=>{
+      const ok=nameInp.value.replace(/\s/g,'').length>=2;
+      const btn=document.getElementById('ov-start');if(!btn)return;
+      btn.className='ov-btn'+(ok?'':' ov-btn-disabled');
+      btn.style.borderColor=ok?'#00ffff':'#444';btn.style.color=ok?'#00ffff':'#444';
+    });
     this.events.once('shutdown',()=>OV.hide());
     if(this.input.keyboard)this.input.keyboard.once('keydown-ENTER',go);
   }
@@ -603,7 +692,7 @@ class MenuScene extends Phaser.Scene{
 // ── GameScene ─────────────────────────────────────────────────────────────────
 class GameScene extends Phaser.Scene{
   constructor(){super('Game');}
-  init(d){this.levelIndex=d.levelIndex||0; this.totalScore=d.totalScore||0;}
+  init(d){this.levelIndex=d.levelIndex||0; this.totalScore=d.totalScore||0; this._paused=false;}
 
   create(){
     this.lvl=getLevel(this.levelIndex);
@@ -618,6 +707,7 @@ class GameScene extends Phaser.Scene{
     this.nextObstacleWorldX=380; this.safetyCoinsSpawned=false; this.trailTimer=0;
     this._nearMissObstacles=new Set(); this._closeCallCooldown=0;
     this._inputBuf=0; this._ambientT=0; this._shockwave=null;
+    this._challengeBeat=false;
     this.laserList=[];
     this._levelPowerup=Math.random()<0.5?'shield':'magnet';
     this.hasShield=false; this.magnetTimer=0; this.powerupType=null; this.powerupMax=0;
@@ -801,28 +891,72 @@ class GameScene extends Phaser.Scene{
 
   _buildUI(){
     const best=parseInt(localStorage.getItem('gf_best')||'0');
-    this.scoreTxt=this.add.text(10,10,'0',{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#00ffff'}).setDepth(20);
-    this.bestTxt=this.add.text(W-10,10,`BEST ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(1,0).setDepth(20);
+    // Shift score/best inward to clear corner button zones
+    this.scoreTxt=this.add.text(32,10,'0',{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#00ffff'}).setDepth(20);
+    this.bestTxt=this.add.text(W-32,10,`BEST ${best}`,{fontFamily:'"Press Start 2P"',fontSize:'11px',color:'#ffff00'}).setOrigin(1,0).setDepth(20);
     this.levelTxt=this.add.text(W/2,10,`LVL ${this.levelIndex+1} \u2022 ${this.theme.name}`,{fontFamily:'"Press Start 2P"',fontSize:'9px',color:'#ff88ff'}).setOrigin(0.5,0).setDepth(20);
     const pname=localStorage.getItem('gf_name')||'';
-    if(pname)this.add.text(W-10,H-10,pname,{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#444'}).setOrigin(1,1).setDepth(20);
+    if(pname)this.add.text(W/2,H-10,pname,{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#333'}).setOrigin(0.5,1).setDepth(20);
     this.coinTxt=this.add.text(10,30,`\u25c6 0/${this.lvl.required}`,{fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffdd00'}).setDepth(20);
     this.progGfx=this.add.graphics().setDepth(20);
     this.powerupGfx=this.add.graphics().setDepth(20);
     this.powerupTxt=this.add.text(10,52,'',{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#00ff88'}).setDepth(20);
-    // Mute button
+    // Mute — bottom-right
     this.muteBtn=this.add.text(W-12,H-12,AUDIO.muted?'[M]':'[S]',{fontFamily:'"Press Start 2P"',fontSize:'9px',color:AUDIO.muted?'#555555':'#00ffcc'}).setOrigin(1,1).setDepth(21).setInteractive();
     this.muteBtn.on('pointerdown',()=>{const m=AUDIO.toggleMute();this.muteBtn.setText(m?'[M]':'[S]').setColor(m?'#555555':'#00ffcc');});
+    // Home ⌂ — top-left (Arial for glyph support)
+    this.homeBtn=this.add.text(8,6,'\u2302',{fontFamily:'Arial,sans-serif',fontSize:'20px',color:'#445566'}).setDepth(21).setInteractive();
+    this.homeBtn.on('pointerdown',()=>{AUDIO.stopMusic();OV.hide();this._paused=false;this.scene.start('Menu');});
+    // Pause ⏸ — top-right
+    this.pauseBtn=this.add.text(W-8,6,'\u23f8',{fontFamily:'Arial,sans-serif',fontSize:'20px',color:'#445566'}).setOrigin(1,0).setDepth(21).setInteractive();
+    this.pauseBtn.on('pointerdown',()=>this._pause());
+    // Challenge HUD
+    if(CHALLENGE.active){
+      this.challengeTxt=this.add.text(W/2,28,`\u2694 ${CHALLENGE.name}: ${CHALLENGE.score}`,
+        {fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#ff88ff'}).setOrigin(0.5,0).setDepth(20);
+    }
   }
 
   _buildInputs(){
-    INPUT.on((pos)=>{if(pos.x>W-40&&pos.y>H-40)return;this._flip();});
+    INPUT.on((pos)=>{
+      if(pos.y<44&&pos.x<50)return;        // home ⌂ (top-left)
+      if(pos.y<44&&pos.x>W-50)return;      // pause ⏸ (top-right)
+      if(pos.x>W-44&&pos.y>H-44)return;    // mute (bottom-right)
+      if(this._paused)return;
+      this._flip();
+    });
     this.events.once('shutdown',()=>INPUT.clear());
     if(this.input.keyboard){
       this.input.keyboard.on('keydown-SPACE',this._flip,this);
       this.input.keyboard.on('keydown-UP',this._flip,this);
       this.input.keyboard.on('keydown-M',()=>{const m=AUDIO.toggleMute();this.muteBtn.setText(m?'[M]':'[S]').setColor(m?'#555555':'#00ffcc');});
+      this.input.keyboard.on('keydown-P',()=>{this._paused?this._resume():this._pause();});
+      this.input.keyboard.on('keydown-ESC',()=>{this._paused?this._resume():this._pause();});
     }
+  }
+
+  // ── Pause ──────────────────────────────────────────────────────────────────
+  _pause(){
+    if(this._paused||!this.alive||!this.gameStarted)return;
+    this._paused=true;
+    AUDIO.pauseMusic();
+    OV.show('ov-pause',
+      `<div class="ov-wrap">
+        <div class="ov-title" style="color:#00ffff">\u23f8 PAUSED</div>
+        <hr class="ov-rule">
+        <button class="ov-btn" id="ov-resume" style="margin-top:10px;border-color:#00ff88;color:#00ff88">\u25b6 RESUME</button>
+        <button class="ov-btn ov-btn-sm" id="ov-pause-home" style="margin-top:4px">\u2190 MAIN MENU</button>
+      </div>`,'rgba(0,0,8,0.92)');
+    this.time.delayedCall(300,()=>{
+      addTap(document.getElementById('ov-resume'),()=>this._resume());
+      addTap(document.getElementById('ov-pause-home'),()=>{OV.hide();AUDIO.stopMusic();this._paused=false;this.scene.start('Menu');});
+    });
+  }
+  _resume(){
+    if(!this._paused)return;
+    this._paused=false;
+    OV.hide();
+    AUDIO.resumeMusic();
   }
 
   // ── Level intro + countdown (HTML overlay) ─────────────────────────────────
@@ -836,10 +970,13 @@ class GameScene extends Phaser.Scene{
         <div class="ov-sub" style="color:#00ffff;margin:10px 0">${l.hint}</div>
         <div class="ov-sub" style="color:#ffdd00">COLLECT ${l.required} COINS TO FINISH</div>
         <button class="ov-btn" id="ov-play" style="margin-top:22px;border-color:#ffff00;color:#ffff00">\u25b6 TAP TO START</button>
+        <button class="ov-btn ov-btn-sm" id="ov-intro-home" style="margin-top:4px">\u2190 MAIN MENU</button>
       </div>`,'rgba(0,0,8,0.86)');
     let started=false;
     const go=()=>{if(started)return;started=true;OV.hide();this._runCountdown();};
+    const goHome=()=>{if(started)return;started=true;OV.hide();AUDIO.stopMusic();this.scene.start('Menu');};
     addTap(document.getElementById('ov-play'),go);
+    addTap(document.getElementById('ov-intro-home'),goHome);
     if(this.input.keyboard)this.input.keyboard.once('keydown',go);
     this.time.delayedCall(4000,go);
   }
@@ -871,7 +1008,7 @@ class GameScene extends Phaser.Scene{
 
   // ── Gravity flip ───────────────────────────────────────────────────────────
   _flip(){
-    if(!this.alive||!this.gameStarted) return;
+    if(!this.alive||!this.gameStarted||this._paused) return;
     if(this.flipCooldown>0){this._inputBuf=INPUT_BUFFER;return;} // queue for later
     this._doFlip();
   }
@@ -1041,7 +1178,7 @@ class GameScene extends Phaser.Scene{
 
   // ── Update ─────────────────────────────────────────────────────────────────
   update(time,delta){
-    if(!this.alive)return;
+    if(!this.alive||this._paused)return;
     const dt=delta/1000;
 
     this.coins.getChildren().forEach(c=>{
@@ -1064,7 +1201,14 @@ class GameScene extends Phaser.Scene{
     this.speed=baseSpeed*(isIntense?1+(prog-0.70)*0.65:1);
     this.distTraveled+=this.speed*dt;
     this.levelScore=Math.floor(this.distTraveled/8);
-    this.scoreTxt.setText(`${this.totalScore+this.levelScore}`);
+    const currentScore=this.totalScore+this.levelScore;
+    this.scoreTxt.setText(`${currentScore}`);
+    if(CHALLENGE.active&&!this._challengeBeat&&currentScore>=CHALLENGE.score){
+      this._challengeBeat=true;
+      if(this.challengeTxt)this.challengeTxt.setColor('#00ff88');
+      this._floatText(W/2,H/2-40,'\u2694 CHALLENGE BEATEN!','#00ff88');
+      this.cameras.main.flash(200,0,255,100,false);
+    }
 
     // Gentle gravity
     this.vy+=GRAVITY_FORCE*this.gravDir*dt;
@@ -1353,7 +1497,7 @@ class LevelCompleteScene extends Phaser.Scene{
   init(d){this.levelIndex=d.levelIndex;this.coinsCollected=d.coinsCollected;this.requiredCoins=d.requiredCoins;this.levelScore=d.levelScore;this.totalScore=d.totalScore;this.isLastLevel=d.isLastLevel;}
   create(){
     AUDIO.init();AUDIO.resume();
-    if(this.isLastLevel)saveScore(this.totalScore);
+    if(this.isLastLevel)saveScore(this.totalScore,this.levelIndex);
     const nt=getLevelTrack(this.isLastLevel?0:this.levelIndex+1);
     this.cameras.main.setBackgroundColor(nt.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
@@ -1372,14 +1516,21 @@ class LevelCompleteScene extends Phaser.Scene{
         <div class="ov-sub" style="color:#888">TOTAL SCORE</div>
         <div class="ov-score" style="color:${isNew?'#ffff00':'#ffffff'}">${this.totalScore}</div>
         ${isNew?'<div class="ov-sub" style="color:#ffff00">\u2605 NEW BEST! \u2605</div>':''}
+        ${CHALLENGE.active?(()=>{const diff=this.totalScore-CHALLENGE.score;const won=diff>=0;return`<div style="border:2px solid ${won?'#00ff88':'#ff4444'};padding:6px 8px;margin:6px 0;font-size:clamp(8px,2.2vw,10px)"><div style="color:#888;margin-bottom:2px">VS ${CHALLENGE.name}</div><div style="color:${won?'#00ff88':'#ff4444'}">${won?'\u25b2 CHALLENGE BEATEN! +'+diff:'\u25bc LOST BY '+Math.abs(diff)}</div></div>`;})():''}
         ${!this.isLastLevel?`<div class="ov-sub" style="color:#aaa">NEXT: LVL ${this.levelIndex+2} \u2022 ${nt.name}</div>`:''}
         <button class="ov-btn" id="ov-next" style="margin-top:16px;border-color:#00ff88;color:#00ff88">${this.isLastLevel?'\u25b6 PLAY AGAIN':'\u25b6 LEVEL '+(this.levelIndex+2)}</button>
+        <button class="ov-btn ov-btn-sm" id="ov-home">\u2190 MAIN MENU</button>
+        <button class="ov-btn ov-btn-sm" id="ov-chal" style="border-color:#ff88ff;color:#ff88ff;margin-top:4px">\u2694 CHALLENGE A FRIEND</button>
       </div>`);
     this.events.once('shutdown',()=>OV.hide());
     this.time.delayedCall(400,()=>{
       let going=false;
       const next=()=>{if(going)return;going=true;OV.hide();AUDIO.stopMusic();this.time.delayedCall(50,()=>this.scene.start('Game',{levelIndex:ni,totalScore:ns}));};
+      const home=()=>{if(going)return;going=true;OV.hide();AUDIO.stopMusic();this.scene.start('Menu');};
       addTap(document.getElementById('ov-next'),next);
+      addTap(document.getElementById('ov-home'),home);
+      const pn=(localStorage.getItem('gf_name')||'PLAYER').trim().toUpperCase().substring(0,12);
+      wireCopyLink('ov-chal',makeChallengeUrl(pn,this.totalScore));
       if(this.input.keyboard){this.input.keyboard.once('keydown-SPACE',next);this.input.keyboard.once('keydown-ENTER',next);}
     });
   }
@@ -1405,13 +1556,16 @@ class LevelFailedScene extends Phaser.Scene{
         <hr class="ov-rule">
         <div class="ov-sub" style="color:#555">LEVEL SCORE: ${this.levelScore}</div>
         <button class="ov-btn" id="ov-retry" style="margin-top:16px">\u25b6 TRY AGAIN</button>
+        <button class="ov-btn ov-btn-sm" id="ov-home">\u2190 MAIN MENU</button>
         <div class="ov-sub" style="color:#333;margin-top:6px">level score is lost</div>
       </div>`);
     this.events.once('shutdown',()=>OV.hide());
     this.time.delayedCall(400,()=>{
       let going=false;
       const go=()=>{if(going)return;going=true;OV.hide();this.scene.start('Game',{levelIndex:this.levelIndex,totalScore:this.totalScore});};
+      const home=()=>{if(going)return;going=true;OV.hide();AUDIO.stopMusic();this.scene.start('Menu');};
       addTap(document.getElementById('ov-retry'),go);
+      addTap(document.getElementById('ov-home'),home);
       if(this.input.keyboard){this.input.keyboard.on('keydown-SPACE',go);this.input.keyboard.on('keydown-ENTER',go);}
     });
   }
@@ -1423,11 +1577,13 @@ class DeathScene extends Phaser.Scene{
   init(d){this.levelIndex=d.levelIndex||0;this.finalScore=d.score||0;this.coins=d.coinsCollected||0;}
   create(){
     AUDIO.init();AUDIO.resume();
-    saveScore(this.finalScore);
+    saveScore(this.finalScore,this.levelIndex);
     const theme=getLevelTrack(this.levelIndex);
     this.cameras.main.setBackgroundColor(theme.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     const isNew=this.finalScore>=best&&this.finalScore>0;
+    const myName=(localStorage.getItem('gf_name')||'').toUpperCase();
+    const chalHTML=CHALLENGE.active?(()=>{const diff=this.finalScore-CHALLENGE.score;const won=diff>=0;return`<div style="border:2px solid ${won?'#00ff88':'#ff4444'};padding:6px 8px;margin:6px 0;font-size:clamp(8px,2.2vw,10px)"><div style="color:#888;margin-bottom:2px">VS ${CHALLENGE.name}</div><div style="color:${won?'#00ff88':'#ff4444'}">${won?'\u25b2 CHALLENGE BEATEN! +'+diff:'\u25bc LOST BY '+Math.abs(diff)}</div></div>`;})():'';
     OV.show('ov-death',
       `<div class="ov-wrap">
         <div class="ov-title" style="color:#ff4444;text-shadow:3px 3px #880000">GAME<br>OVER</div>
@@ -1437,20 +1593,28 @@ class DeathScene extends Phaser.Scene{
         <div class="ov-score" style="color:${isNew?'#ffff00':'#00ffff'}">${this.finalScore}</div>
         ${isNew?'<div class="ov-sub" style="color:#ffff00">\u2605 NEW BEST! \u2605</div>':`<div class="ov-sub" style="color:#ffff00">BEST: ${best}</div>`}
         <div class="ov-sub" style="color:#ffdd00">\u25c6 COINS: ${this.coins}</div>
+        ${chalHTML}
         <hr class="ov-rule">
-        <button class="ov-btn" id="ov-retry" style="border-color:#00ffff;color:#00ffff">\u25b6 RETRY LEVEL ${this.levelIndex+1}</button>
-        <button class="ov-btn ov-btn-sm" id="ov-restart">\u25b6 RESTART FROM LVL 1</button>
+        <div class="ov-sub" style="color:#666;margin-bottom:2px">\u2605 HALL OF FAME</div>
+        <div class="lb-list" id="lb-death"><div style="text-align:center;padding:10px 0"><span class="lb-spin"></span></div></div>
+        <hr class="ov-rule">
+        <button class="ov-btn" id="ov-retry" style="border-color:#00ffff;color:#00ffff">\u25b6 TRY AGAIN</button>
+        <button class="ov-btn ov-btn-sm" id="ov-home">\u2190 MAIN MENU</button>
+        <button class="ov-btn ov-btn-sm" id="ov-chal-d" style="border-color:#ff88ff;color:#ff88ff;margin-top:4px">\u2694 CHALLENGE A FRIEND</button>
       </div>`);
+    fillLbAsync('lb-death',myName);
     this.events.once('shutdown',()=>OV.hide());
     this.time.delayedCall(400,()=>{
       let going=false;
       const go=(li)=>{if(going)return;going=true;OV.hide();this.scene.start('Game',{levelIndex:li,totalScore:0});};
+      const home=()=>{if(going)return;going=true;OV.hide();AUDIO.stopMusic();this.scene.start('Menu');};
       addTap(document.getElementById('ov-retry'),()=>go(this.levelIndex));
-      addTap(document.getElementById('ov-restart'),()=>go(0));
+      addTap(document.getElementById('ov-home'),home);
+      const pn=myName||'PLAYER';
+      wireCopyLink('ov-chal-d',makeChallengeUrl(pn,this.finalScore));
       if(this.input.keyboard){
         this.input.keyboard.on('keydown-SPACE',()=>go(this.levelIndex));
         this.input.keyboard.on('keydown-ENTER',()=>go(this.levelIndex));
-        this.input.keyboard.on('keydown-R',()=>go(0));
       }
     });
   }
@@ -1462,23 +1626,18 @@ class LeaderboardScene extends Phaser.Scene{
   create(){
     AUDIO.init();
     const myName=(localStorage.getItem('gf_name')||'').toUpperCase();
-    const scores=getScores().slice(0,10);
-    const rowsHTML=scores.length?scores.map((s,i)=>{
-      const isMe=myName&&s.name===myName;
-      const rank=i===0?'\u2605':'#'+(i+1);
-      return `<div class="lb-row${isMe?' lb-me':''}"><span class="lb-rank">${rank}</span><span class="lb-name">${s.name}</span><span class="lb-score">${s.score}</span><span class="lb-date">${s.date}</span></div>`;
-    }).join(''):`<div style="color:#333;font-size:9px;padding:18px 0;text-align:center">NO SCORES YET<br><span style="color:#222;font-size:7px">PLAY A GAME FIRST</span></div>`;
     OV.show('ov-lb',
       `<div class="ov-wrap">
         <div class="ov-title" style="color:#ffdd00;text-shadow:3px 3px #886600">\u2605 HALL OF FAME</div>
         <div class="ov-sub" style="color:#555;margin-bottom:4px">TOP SCORES</div>
-        <div class="lb-list">${rowsHTML}</div>
+        <div class="lb-list" id="lb-main"><div style="text-align:center;padding:18px 0"><span class="lb-spin"></span></div></div>
         <button class="ov-btn" id="lb-back" style="margin-top:14px;border-color:#00ffff;color:#00ffff">\u25c4 BACK</button>
         <button class="ov-btn ov-btn-sm" id="lb-clear" style="color:#222;border-color:#1a1a1a;margin-top:2px">CLEAR SCORES</button>
       </div>`,'rgba(0,0,8,0.97)');
+    fillLbAsync('lb-main',myName);
     addTap(document.getElementById('lb-back'),()=>{OV.hide();this.scene.start('Menu');});
     addTap(document.getElementById('lb-clear'),()=>{
-      if(confirm('Clear all scores from the leaderboard?')){localStorage.removeItem('gf_scores');OV.hide();this.scene.restart();}
+      if(confirm('Clear all local scores?')){localStorage.removeItem('gf_scores');OV.hide();this.scene.restart();}
     });
     this.events.once('shutdown',()=>OV.hide());
     if(this.input.keyboard)this.input.keyboard.once('keydown-ESCAPE',()=>{OV.hide();this.scene.start('Menu');});
