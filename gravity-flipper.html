@@ -172,13 +172,20 @@ function wireShareBtns(containerId,name,score){
   cont.innerHTML=`<button class="ov-btn ov-btn-sm" id="${containerId}-t" style="border-color:#ff88ff;color:#ff88ff">\u2694 CHALLENGE A FRIEND</button>`;
   addTap(document.getElementById(`${containerId}-t`),()=>{
     // Step 2: replace with share options
-    const msg=encodeURIComponent(`\uD83C\uDFAE I scored ${score} points in Gravity Flipper! Think you can beat me? \uD83D\uDC49 ${url}`);
+    const shareText=`\uD83C\uDFAE I scored ${score} points in Gravity Flipper! Think you can beat me? \uD83D\uDC49 ${url}`;
+    const msg=encodeURIComponent(shareText);
     cont.innerHTML=`
       <div class="ov-sub" style="color:#888;margin:6px 0 4px">SHARE VIA</div>
       <button class="share-btn share-wa" id="${containerId}-wa">\uD83D\uDCAC WHATSAPP</button>
       <button class="share-btn share-gm" id="${containerId}-gm">\uD83D\uDCE7 GMAIL</button>
       <button class="share-btn share-cp" id="${containerId}-cp">\uD83D\uDD17 COPY LINK</button>`;
-    addTap(document.getElementById(`${containerId}-wa`),()=>window.open(`https://wa.me/?text=${msg}`,'_blank'));
+    addTap(document.getElementById(`${containerId}-wa`),()=>{
+      if(navigator.share){
+        navigator.share({title:'Gravity Flipper Challenge',text:`\uD83C\uDFAE I scored ${score} points in Gravity Flipper! Think you can beat me?`,url:url}).catch(()=>{});
+      } else {
+        window.open(`https://wa.me/?text=${msg}`,'_blank');
+      }
+    });
     addTap(document.getElementById(`${containerId}-gm`),()=>window.open(`mailto:?subject=${encodeURIComponent('Gravity Flipper Challenge!')}&body=${msg}`,'_self'));
     addTap(document.getElementById(`${containerId}-cp`),()=>{
       navigator.clipboard?navigator.clipboard.writeText(url).catch(()=>prompt('Copy:',url)):prompt('Copy:',url);
