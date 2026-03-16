@@ -168,11 +168,9 @@ function makeChallengeUrl(name,score){
 function wireShareBtns(containerId,name,score){
   const cont=document.getElementById(containerId);if(!cont)return;
   const url=makeChallengeUrl(name,score);
-  // Step 1: show trigger button
-  cont.innerHTML=`<button class="ov-btn ov-btn-sm" id="${containerId}-t" style="border-color:#ff88ff;color:#ff88ff">\u2694 CHALLENGE A FRIEND</button>`;
-  addTap(document.getElementById(`${containerId}-t`),()=>{
-    // Step 2: replace with share options
-    const shareText=`\uD83C\uDFC6 GRAVITY FLIPPER CHALLENGE \uD83C\uDFC6\n${name} scored ${score} points!\nThink you can beat them? \uD83D\uDE0F\n\uD83D\uDC49 ${url}`;
+  const buildMessage=(shortUrl)=>`\uD83C\uDFC6 GRAVITY FLIPPER CHALLENGE\n${name} scored ${score} points!\nThink you can beat them? \uD83D\uDE0F\nTry now \uD83D\uDC49 ${shortUrl}`;
+  const showButtons=(shortUrl)=>{
+    const shareText=buildMessage(shortUrl);
     const msg=encodeURIComponent(shareText);
     cont.innerHTML=`
       <div class="ov-sub" style="color:#888;margin:6px 0 4px">SHARE VIA</div>
@@ -188,10 +186,18 @@ function wireShareBtns(containerId,name,score){
     });
     addTap(document.getElementById(`${containerId}-gm`),()=>window.open(`mailto:?subject=${encodeURIComponent('Gravity Flipper Challenge!')}&body=${msg}`,'_self'));
     addTap(document.getElementById(`${containerId}-cp`),()=>{
-      navigator.clipboard?navigator.clipboard.writeText(url).catch(()=>prompt('Copy:',url)):prompt('Copy:',url);
+      navigator.clipboard?navigator.clipboard.writeText(shortUrl).catch(()=>prompt('Copy:',shortUrl)):prompt('Copy:',shortUrl);
       const b=document.getElementById(`${containerId}-cp`);
       if(b){b.textContent='\u2713 COPIED!';b.style.borderColor='#00ff88';b.style.color='#00ff88';}
     });
+  };
+  cont.innerHTML=`<button class="ov-btn ov-btn-sm" id="${containerId}-t" style="border-color:#ff88ff;color:#ff88ff">\u2694 CHALLENGE A FRIEND</button>`;
+  addTap(document.getElementById(`${containerId}-t`),()=>{
+    cont.innerHTML=`<div class="ov-sub" style="color:#888;margin:8px 0">Preparing challenge\u2026</div>`;
+    fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`)
+      .then(r=>r.ok?r.text():Promise.reject())
+      .then(short=>showButtons(short.trim()))
+      .catch(()=>showButtons(url));
   });
 }
 
