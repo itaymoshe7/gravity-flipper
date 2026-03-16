@@ -224,8 +224,16 @@ const TRACKS=[
    bg:'#000c18',wallFill:0x001828,wallLine:0x66ccff,wallGlow:0x003355,blockTint:0xaaddff,spikeTint:0xffffff,laserCol:0x00ccff},
   {id:'cyber',name:'CYBER GRID', style:'cyber', previewGrad:['#00ff44','#004422'],
    bg:'#000800',wallFill:0x001200,wallLine:0x00ff44,wallGlow:0x004422,blockTint:0x88ffaa,spikeTint:0xffff00,laserCol:0x00ff44},
-  {id:'void', name:'SPACE VOID', style:'void',  previewGrad:['#aaaacc','#001133'],
+  {id:'void',    name:'SPACE VOID',     style:'void',    previewGrad:['#aaaacc','#001133'],
    bg:'#000008',wallFill:0x050510,wallLine:0x8888cc,wallGlow:0x221144,blockTint:0xccccdd,spikeTint:0x88aaff,laserCol:0xaaaaff},
+  {id:'ocean',   name:'DEEP OCEAN',     style:'ocean',   previewGrad:['#0055aa','#001133'],
+   bg:'#000a18',wallFill:0x000a18,wallLine:0x0088dd,wallGlow:0x001144,blockTint:0x0099ee,spikeTint:0x00ffcc,laserCol:0x0055ff},
+  {id:'sky',     name:'SKY HIGH',       style:'sky',     previewGrad:['#88ccff','#ddf4ff'],
+   bg:'#0a1828',wallFill:0x0a2035,wallLine:0x88ccff,wallGlow:0x224488,blockTint:0xaaddff,spikeTint:0xffaa44,laserCol:0x55aaff},
+  {id:'factory', name:'CYBER FACTORY',  style:'factory', previewGrad:['#ff6600','#331100'],
+   bg:'#080400',wallFill:0x140800,wallLine:0xff6600,wallGlow:0x662200,blockTint:0xff8833,spikeTint:0xffee00,laserCol:0xff4400},
+  {id:'mirror',  name:'MIRROR DIM',     style:'mirror',  previewGrad:['#ff00ff','#6600cc'],
+   bg:'#080010',wallFill:0x100020,wallLine:0xff00ff,wallGlow:0x440066,blockTint:0xff88ff,spikeTint:0x88ffff,laserCol:0xff00cc},
 ];
 function getTrack(){const id=localStorage.getItem('gf_track')||'neon';return TRACKS.find(t=>t.id===id)||TRACKS[0];}
 // Level-theme rotation: player's chosen track is level 1; subsequent levels cycle forward
@@ -252,6 +260,10 @@ const LEVELS=[
   {distance:4200,startSpeed:416,endSpeed:452,gap:115,spacing:206,types:['spike','barrier','moving','laser','gauntlet'], coins:13,required:8,hint:'GAUNTLET MODE'},
   {distance:4600,startSpeed:456,endSpeed:490,gap:100,spacing:180,types:['spike','barrier','moving','laser','gauntlet'], coins:13,required:9,hint:'ALMOST THERE'},
   {distance:5000,startSpeed:494,endSpeed:526,gap:87, spacing:158,types:['spike','barrier','moving','laser','gauntlet'], coins:15,required:10,hint:'MAXIMUM INTENSITY'},
+  {distance:5500,startSpeed:530,endSpeed:562,gap:78, spacing:142,types:['spike','barrier','moving','laser','gauntlet'], coins:15,required:11,hint:'DEEP PRESSURE'},
+  {distance:6000,startSpeed:566,endSpeed:598,gap:70, spacing:128,types:['spike','barrier','moving','laser','gauntlet'], coins:17,required:12,hint:'STORM INCOMING'},
+  {distance:6500,startSpeed:602,endSpeed:634,gap:63, spacing:115,types:['spike','barrier','moving','laser','gauntlet'], coins:17,required:12,hint:'MIRROR MADNESS'},
+  {distance:7000,startSpeed:638,endSpeed:672,gap:57, spacing:103,types:['spike','barrier','moving','laser','gauntlet'], coins:19,required:13,hint:'BEYOND LIMITS'},
 ];
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
 
@@ -301,10 +313,8 @@ function saveDailyChallenges(data){localStorage.setItem('gf_daily',JSON.stringif
 // ── Audio Manager ─────────────────────────────────────────────────────────────
 class AudioMgr{
   constructor(){
-    this.ctx=null;this.master=null;this.sfxBus=null;this.musicBus=null;
+    this.ctx=null;this.master=null;this.sfxBus=null;
     this.muted=localStorage.getItem('gf_mute')==='1';
-    this._mPlaying=false;this._mTimer=null;this._mNoteIdx=0;this._mNextTime=0;
-    this._melody=null;this._musicTempoMult=1.0;
   }
   init(){
     if(this.ctx)return;
@@ -312,7 +322,6 @@ class AudioMgr{
     this.master=this.ctx.createGain();this.master.gain.value=this.muted?0:1;
     this.master.connect(this.ctx.destination);
     this.sfxBus=this.ctx.createGain();this.sfxBus.gain.value=0.55;this.sfxBus.connect(this.master);
-    this.musicBus=this.ctx.createGain();this.musicBus.gain.value=0.13;this.musicBus.connect(this.master);
   }
   resume(){if(this.ctx&&this.ctx.state==='suspended')this.ctx.resume();}
   _osc(bus,freq,type,vol,t0,dur){
@@ -395,98 +404,10 @@ class AudioMgr{
     o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.12);
   }
 
-  // ── Music ───────────────────────────────────────────────────────────────────
-  // 4 melody variants, 2 levels each — chosen from levelIndex
-  _getMelody(levelIndex){
-    const BPM=138,B=60/BPM;
-    // Helper to convert note list [freq,beats] → timed sequence
-    const seq=(notes)=>notes.map(([f,b])=>[f,b*B]);
-    const melodies=[
-      // Variant 0: C major, light adventure (levels 1-2)
-      seq([
-        [659,0.5],[587,0.25],[523,0.25],[659,0.5],[784,0.5],
-        [880,0.75],[784,0.25],[659,1.0],
-        [784,0.5],[659,0.5],[523,0.5],[659,0.5],
-        [587,0.75],[523,0.25],[523,1.0],
-        [698,0.5],[880,0.5],[1047,0.5],[880,0.5],
-        [784,0.5],[659,0.5],[698,1.0],
-        [523,0.5],[659,0.5],[784,0.5],[1047,0.5],
-        [880,0.75],[784,0.25],[523,1.0],
-      ]),
-      // Variant 1: F major, upbeat journey (levels 3-4)
-      seq([
-        [698,0.5],[784,0.25],[880,0.25],[1047,0.5],[880,0.5],
-        [784,0.75],[698,0.25],[698,1.0],
-        [523,0.5],[659,0.5],[784,0.5],[698,0.5],
-        [880,0.75],[784,0.25],[523,1.0],
-        [1047,0.5],[880,0.5],[784,0.5],[698,0.5],
-        [659,0.5],[698,0.5],[784,0.5],[0,0.5],
-        [880,0.5],[784,0.5],[698,0.5],[587,0.5],
-        [523,1.5],[0,0.5],
-      ]),
-      // Variant 2: D minor, building tension (levels 5-6)
-      seq([
-        [587,0.5],[698,0.5],[784,0.5],[587,0.5],
-        [880,0.75],[784,0.25],[698,1.0],
-        [659,0.5],[587,0.5],[523,0.5],[587,0.5],
-        [698,0.75],[587,0.25],[587,1.0],
-        [440,0.5],[523,0.5],[587,0.5],[698,0.5],
-        [784,0.5],[698,0.5],[587,0.5],[0,0.5],
-        [523,0.5],[587,0.5],[659,0.5],[784,0.5],
-        [587,1.5],[0,0.5],
-      ]),
-      // Variant 3: A minor, dramatic climax (levels 7-8)
-      seq([
-        [880,0.5],[784,0.5],[698,0.5],[659,0.5],
-        [784,0.5],[880,0.5],[1047,1.0],
-        [880,0.5],[784,0.5],[698,0.5],[523,0.5],
-        [587,0.75],[0,0.25],[0,1.0],
-        [880,0.5],[1047,0.5],[1175,0.5],[1047,0.5],
-        [880,0.5],[784,0.5],[698,0.5],[0,0.5],
-        [659,0.5],[698,0.5],[784,0.5],[880,0.5],
-        [784,1.5],[0,0.5],
-      ]),
-    ];
-    return melodies[Math.floor(levelIndex/2)%melodies.length];
-  }
-
-  startMusic(levelIndex=0){
-    if(!this.ctx||this._mPlaying)return;
-    this._mPlaying=true;this._mNoteIdx=0;this._musicTempoMult=1.0;
-    this._melody=this._getMelody(levelIndex);
-    this._mNextTime=this.ctx.currentTime+0.1;
-    this._musicLoop();
-  }
-  stopMusic(){
-    this._mPlaying=false;
-    if(this._mTimer)clearTimeout(this._mTimer);
-  }
-  pauseMusic(){
-    if(this._mTimer)clearTimeout(this._mTimer);
-    this._mTimer=null;
-    if(this.ctx&&this.ctx.state==='running')this.ctx.suspend();
-  }
-  resumeMusic(){
-    if(this.ctx&&this.ctx.state==='suspended')
-      this.ctx.resume().then(()=>{if(this._mPlaying)this._musicLoop();});
-  }
-  _musicLoop(){
-    if(!this._mPlaying)return;
-    while(this._mNextTime<this.ctx.currentTime+0.28)this._schedNote();
-    this._mTimer=setTimeout(()=>this._musicLoop(),80);
-  }
-  _schedNote(){
-    const[freq,dur]=this._melody[this._mNoteIdx%this._melody.length];
-    if(freq>0&&!this.muted){
-      const t=this._mNextTime,noteLen=dur*0.78;
-      const o=this.ctx.createOscillator(),g=this.ctx.createGain();
-      o.type='square';o.frequency.value=freq;
-      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(1,t+0.005);
-      g.gain.setValueAtTime(1,t+noteLen*0.55);g.gain.linearRampToValueAtTime(0,t+noteLen);
-      o.connect(g);g.connect(this.musicBus);o.start(t);o.stop(t+noteLen+0.01);
-    }
-    this._mNextTime+=dur*this._musicTempoMult;this._mNoteIdx++;
-  }
+  startMusic(){}
+  stopMusic(){}
+  pauseMusic(){if(this.ctx&&this.ctx.state==='running')this.ctx.suspend();}
+  resumeMusic(){if(this.ctx&&this.ctx.state==='suspended')this.ctx.resume();}
   toggleMute(){
     this.muted=!this.muted;
     localStorage.setItem('gf_mute',this.muted?'1':'0');
@@ -843,6 +764,10 @@ class GameScene extends Phaser.Scene{
     this._prevMagnetActive=false; this._prevShieldActive=false;
     this._levelFlips=0; this._rareCoins=0;
     this.fireballs=[]; this._fireballTimer=2.0;
+    this._currentTimer=2.5; this._currentDuration=0; this._currentBoost=0;
+    this._windTimer=3.0; this._windDuration=0; this._windForce=0;
+    this._mirrorFlipped=false;
+    this.cloudList=[];
 
     this.obstacles=this.add.group();
     this.coins=this.add.group();
@@ -1152,6 +1077,12 @@ class GameScene extends Phaser.Scene{
     this.flipCooldown=0.12;
     this.gravDir*=-1;
     this._levelFlips++;
+    // Mirror Dimension: flip camera 180° on every gravity flip
+    if(this.theme&&this.theme.style==='mirror'){
+      this._mirrorFlipped=!this._mirrorFlipped;
+      this.cameras.main.setAngle(this._mirrorFlipped?180:0);
+      this.cameras.main.flash(55,180,0,255,false);
+    }
     // Gentle push — preserves much of existing momentum, feels floaty
     this.vy=lerp(this.vy,this.gravDir*-FLIP_KICK,0.52);
     this.cameras.main.flash(45,20,60,160,false);
@@ -1206,6 +1137,27 @@ class GameScene extends Phaser.Scene{
       this._ambientT=0;
       let p=this._poolParticle();
       if(p){p.setActive(true).setVisible(true);p.x=Phaser.Math.Between(0,W);p.y=Math.random()<0.5?Phaser.Math.Between(0,TUNNEL_TOP):Phaser.Math.Between(TUNNEL_BOTTOM,H);p.vx=(Math.random()-0.5)*18;p.vy=(Math.random()-0.5)*18;p.life=0.7;p.setTint(Math.random()<0.5?0x00ccff:0xaa44ff);p.setScale(1);}
+    } else if(style==='ocean'&&this._ambientT>0.18){
+      this._ambientT=0;
+      // Bubbles rise upward from floor
+      let p=this._poolParticle();
+      if(p){p.setActive(true).setVisible(true);p.x=Phaser.Math.Between(10,W-10);p.y=TUNNEL_BOTTOM-4;p.vx=(Math.random()-0.5)*8;p.vy=-Phaser.Math.Between(18,55);p.life=1.6;p.setTint(Math.random()<0.5?0x0088ff:0x00ffee);p.setScale(Math.random()<0.5?1:2);}
+    } else if(style==='sky'&&this._ambientT>0.55){
+      this._ambientT=0;
+      // Birds — tiny fast dots
+      let p=this._poolParticle();
+      if(p){p.setActive(true).setVisible(true);p.x=W+4;p.y=Phaser.Math.Between(TUNNEL_TOP+10,TUNNEL_BOTTOM-10);p.vx=-(Phaser.Math.Between(70,140));p.vy=(Math.random()-0.5)*12;p.life=1.2;p.setTint(0x444444);p.setScale(1);}
+    } else if(style==='factory'&&this._ambientT>0.25){
+      this._ambientT=0;
+      // Steam from walls
+      const fromTop=Math.random()<0.5;
+      let p=this._poolParticle();
+      if(p){p.setActive(true).setVisible(true);p.x=Phaser.Math.Between(20,W-20);p.y=fromTop?TUNNEL_TOP+4:TUNNEL_BOTTOM-4;p.vx=(Math.random()-0.5)*20;p.vy=fromTop?Phaser.Math.Between(12,36):-Phaser.Math.Between(12,36);p.life=0.9;p.setTint(Math.random()<0.5?0xff8800:0xffcc44);p.setScale(Phaser.Math.Between(1,3));}
+    } else if(style==='mirror'&&this._ambientT>0.3){
+      this._ambientT=0;
+      // Glitchy purple/pink sparkles
+      let p=this._poolParticle();
+      if(p){p.setActive(true).setVisible(true);p.x=Phaser.Math.Between(0,W);p.y=Phaser.Math.Between(TUNNEL_TOP,TUNNEL_BOTTOM);p.vx=(Math.random()-0.5)*35;p.vy=(Math.random()-0.5)*35;p.life=0.5;p.setTint(Math.random()<0.5?0xff00ff:0x88ffff);p.setScale(Phaser.Math.Between(1,3));}
     }
   }
 
@@ -1265,12 +1217,13 @@ class GameScene extends Phaser.Scene{
   _doLaser(sx,wx){
     const d=this.levelIndex/7;
     const isCyber=this.theme.style==='cyber';
+    const isFactory=this.theme.style==='factory';
     const gfx=this.add.graphics().setDepth(7);
     this.laserList.push({
       gfx,x:sx,
-      period:isCyber?lerp(0.7,0.4,d):lerp(2.4,1.3,d),
+      period:isCyber?lerp(0.7,0.4,d):isFactory?0.5:lerp(2.4,1.3,d),
       phase:Math.random(),
-      onRatio:isCyber?lerp(0.55,0.72,d):lerp(0.35,0.55,d),
+      onRatio:isCyber?lerp(0.55,0.72,d):isFactory?0.5:lerp(0.35,0.55,d),
     });
     this._placeCoin(sx-80,H/2,wx-80);
   }
@@ -1340,10 +1293,6 @@ class GameScene extends Phaser.Scene{
       if(this.flipCooldown<=0)this._doFlip();
     }
     const prog=clamp(this.distTraveled/this.lvl.distance,0,1);
-    // Dynamic music tempo: speeds up approaching finish
-    if(prog>0.8)AUDIO._musicTempoMult=lerp(1.0,0.70,clamp((prog-0.8)/0.2,0,1));
-    else if(prog>0.5)AUDIO._musicTempoMult=lerp(1.0,0.88,clamp((prog-0.5)/0.3,0,1));
-    else AUDIO._musicTempoMult=1.0;
     // Non-linear: ease in slow, ramp hard in final 30%
     const isIntense=prog>0.70;
     const baseSpeed=lerp(this.lvl.startSpeed*0.88,this.lvl.endSpeed,prog);
@@ -1359,8 +1308,41 @@ class GameScene extends Phaser.Scene{
       this.cameras.main.flash(200,0,255,100,false);
     }
 
-    // Gentle gravity
-    this.vy+=GRAVITY_FORCE*this.gravDir*dt;
+    // World-specific mechanics
+    const style=this.theme.style;
+    // Ocean: water current speed bursts
+    if(style==='ocean'){
+      this._currentTimer-=dt;
+      if(this._currentTimer<=0){
+        this._currentTimer=3+Math.random()*4;
+        this._currentBoost=(Math.random()>0.5?1:-1)*(35+Math.random()*45);
+        this._currentDuration=1.0+Math.random()*0.8;
+        this._floatText(W/2,H/2-28,this._currentBoost>0?'\u27a1 CURRENT':'\u2b05 CURRENT','#00aaff');
+      }
+      if(this._currentDuration>0){this._currentDuration-=dt;this.speed+=this._currentBoost;}
+    }
+    // Sky: wind drifts player vertically
+    if(style==='sky'){
+      this._windTimer-=dt;
+      if(this._windTimer<=0){
+        this._windTimer=4+Math.random()*4;
+        this._windForce=(Math.random()>0.5?1:-1)*(45+Math.random()*55);
+        this._windDuration=1.4+Math.random();
+        this._floatText(W/2,H/2-28,this._windForce>0?'\u2b07 WIND':'\u2b06 WIND','#aaddff');
+      }
+      if(this._windDuration>0){this._windDuration-=dt;if(this._windDuration<=0)this._windForce=0;}
+    }
+    // Factory: touching walls applies speed boost/penalty
+    if(style==='factory'){
+      const ph2=this.player.displayHeight/2;
+      if(this.player.y-ph2<TUNNEL_TOP+26)this.speed=Math.min(this.speed+90*dt,this.lvl.endSpeed*1.35);
+      if(this.player.y+ph2>TUNNEL_BOTTOM-26)this.speed=Math.max(this.speed-80*dt,this.lvl.startSpeed*0.65);
+    }
+    // Gentle gravity (ocean has reduced gravity)
+    const gravMult=style==='ocean'?0.62:1.0;
+    this.vy+=GRAVITY_FORCE*this.gravDir*dt*gravMult;
+    // Sky wind applies vertical drift
+    if(style==='sky'&&this._windForce!==0)this.vy+=this._windForce*dt;
     this.vy=clamp(this.vy,-VEL_MAX,VEL_MAX);
     this.player.y+=this.vy*dt;
     this.player.setRotation(clamp(this.vy*0.0007,-0.3,0.3));
@@ -1391,6 +1373,12 @@ class GameScene extends Phaser.Scene{
     for(const obs of this.obstacles.getChildren().slice()){
       obs.x-=this.speed*dt;
       if(obs.obstacleType==='moving'){obs.y+=obs.moveSpeed*dt;if(obs.y<obs.minY||obs.y>obs.maxY)obs.moveSpeed*=-1;}
+      // Mirror Dimension: some obstacles invisible based on gravity direction
+      if(style==='mirror'){
+        if(obs._mirrorHidden===undefined)obs._mirrorHidden=Math.random()<0.44;
+        obs.setAlpha(obs._mirrorHidden?(this.gravDir>0?0.06:1.0):1.0);
+      }
+      if(obs._mirrorHidden&&obs.alpha<0.2){continue;} // invisible = no collision
       if(this._aabb(this.player,obs)){this._die();return;}
       if(!this._nearMissObstacles.has(obs)&&this._nearMissCheck(this.player,obs)){
         this._nearMissObstacles.add(obs);
@@ -1514,6 +1502,25 @@ class GameScene extends Phaser.Scene{
     } else {
       this.powerupTxt.setText('');
       if(!shieldActive&&!magnetActive)this.powerupType=null;
+    }
+    // Sky clouds: spawn + scroll semi-opaque cloud rectangles
+    if(style==='sky'&&this.gameStarted){
+      this._cloudTimer=(this._cloudTimer||0)-dt;
+      if(this._cloudTimer<=0){
+        this._cloudTimer=5+Math.random()*6;
+        const cw=Phaser.Math.Between(110,200),ch=Phaser.Math.Between(38,72);
+        const cy=Phaser.Math.Between(TUNNEL_TOP+8,TUNNEL_BOTTOM-ch-8);
+        const cwx=this.distTraveled+(W-PLAYER_X)+Phaser.Math.Between(40,160);
+        const cg=this.add.graphics().setDepth(18);
+        cg.fillStyle(0xffffff,0.65);cg.fillRoundedRect(0,0,cw,ch,12);
+        cg.x=this._w2s(cwx);cg.y=cy;
+        this.cloudList.push({gfx:cg,worldX:cwx,y:cy});
+      }
+      for(let i=this.cloudList.length-1;i>=0;i--){
+        const cl=this.cloudList[i];
+        cl.gfx.x=this._w2s(cl.worldX);
+        if(cl.gfx.x<-220){cl.gfx.destroy();this.cloudList.splice(i,1);}
+      }
     }
     this._themeAmbient(dt,time);
     this._drawWalls(this.distTraveled,time);
@@ -1642,6 +1649,8 @@ class GameScene extends Phaser.Scene{
   _completeLEVEL(){
     if(this.levelDone||!this.alive)return;
     this.levelDone=true;this.alive=false;
+    this.cameras.main.setAngle(0);
+    this.cloudList.forEach(cl=>{try{cl.gfx.destroy();}catch(e){}});this.cloudList=[];
     const passed=this.coinsCollected>=this.lvl.required;
     this._checkDailyChallenges(this.coinsCollected,this._levelFlips,passed);
     if(passed){
@@ -1685,6 +1694,8 @@ class GameScene extends Phaser.Scene{
     }
     this.player.setVisible(false);this.trail.forEach(t=>t.setVisible(false));
     this.fireballs.forEach(fb=>{try{fb.destroy();}catch(e){}});this.fireballs=[];
+    this.cloudList.forEach(cl=>{try{cl.gfx.destroy();}catch(e){}});this.cloudList=[];
+    this.cameras.main.setAngle(0);
     const fs=this.totalScore+this.levelScore;
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     if(fs>best)localStorage.setItem('gf_best',fs);
