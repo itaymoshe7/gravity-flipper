@@ -232,8 +232,6 @@ const TRACKS=[
    bg:'#0a1828',wallFill:0x0a2035,wallLine:0x88ccff,wallGlow:0x224488,blockTint:0xaaddff,spikeTint:0xffaa44,laserCol:0x55aaff},
   {id:'factory', name:'CYBER FACTORY',  style:'factory', previewGrad:['#ff6600','#331100'],
    bg:'#080400',wallFill:0x140800,wallLine:0xff6600,wallGlow:0x662200,blockTint:0xff8833,spikeTint:0xffee00,laserCol:0xff4400},
-  {id:'mirror',  name:'MIRROR DIM',     style:'mirror',  previewGrad:['#ff00ff','#6600cc'],
-   bg:'#080010',wallFill:0x100020,wallLine:0xff00ff,wallGlow:0x440066,blockTint:0xff88ff,spikeTint:0x88ffff,laserCol:0xff00cc},
 ];
 function getTrack(){const id=localStorage.getItem('gf_track')||'neon';return TRACKS.find(t=>t.id===id)||TRACKS[0];}
 // Level-theme rotation: player's chosen track is level 1; subsequent levels cycle forward
@@ -262,7 +260,7 @@ const LEVELS=[
   {distance:5000,startSpeed:494,endSpeed:526,gap:87, spacing:158,types:['spike','barrier','moving','laser','gauntlet'], coins:15,required:10,hint:'MAXIMUM INTENSITY'},
   {distance:5500,startSpeed:530,endSpeed:562,gap:78, spacing:142,types:['spike','barrier','moving','laser','gauntlet'], coins:15,required:11,hint:'DEEP PRESSURE'},
   {distance:6000,startSpeed:566,endSpeed:598,gap:70, spacing:128,types:['spike','barrier','moving','laser','gauntlet'], coins:17,required:12,hint:'STORM INCOMING'},
-  {distance:6500,startSpeed:602,endSpeed:634,gap:63, spacing:115,types:['spike','barrier','moving','laser','gauntlet'], coins:17,required:12,hint:'MIRROR MADNESS'},
+  {distance:6500,startSpeed:602,endSpeed:634,gap:63, spacing:115,types:['spike','barrier','moving','laser','gauntlet'], coins:17,required:12,hint:'FACTORY STORM'},
   {distance:7000,startSpeed:638,endSpeed:672,gap:57, spacing:103,types:['spike','barrier','moving','laser','gauntlet'], coins:19,required:13,hint:'BEYOND LIMITS'},
 ];
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
@@ -766,7 +764,7 @@ class GameScene extends Phaser.Scene{
     this.fireballs=[]; this._fireballTimer=2.0;
     this._currentTimer=2.5; this._currentDuration=0; this._currentBoost=0;
     this._windTimer=3.0; this._windDuration=0; this._windForce=0;
-    this._mirrorFlipped=false;
+
     this.cloudList=[];
 
     this.obstacles=this.add.group();
@@ -793,11 +791,14 @@ class GameScene extends Phaser.Scene{
     const g=this.wallGfx,t=this.theme; g.clear();
     g.fillStyle(t.wallFill); g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
     switch(t.style){
-      case 'lava':  this._wLava(g,t,off,time);  break;
-      case 'ice':   this._wIce(g,t,off,time);   break;
-      case 'cyber': this._wCyber(g,t,off,time); break;
-      case 'void':  this._wVoid(g,t,off,time);  break;
-      default:      this._wNeon(g,t,off,time);  break;
+      case 'lava':    this._wLava(g,t,off,time);    break;
+      case 'ice':     this._wIce(g,t,off,time);     break;
+      case 'cyber':   this._wCyber(g,t,off,time);   break;
+      case 'void':    this._wVoid(g,t,off,time);    break;
+      case 'ocean':   this._wOcean(g,t,off,time);   break;
+      case 'sky':     this._wSky(g,t,off,time);     break;
+      case 'factory': this._wFactory(g,t,off,time); break;
+      default:        this._wNeon(g,t,off,time);    break;
     }
     // Always: bright tunnel border + inner glow
     g.lineStyle(3,t.wallLine,1);
@@ -927,6 +928,134 @@ class GameScene extends Phaser.Scene{
     }
     g.fillStyle(0x8888cc,0.06+Math.sin(time*0.002)*0.03);
     g.fillRect(0,TUNNEL_TOP-8,W,8); g.fillRect(0,TUNNEL_BOTTOM,W,8);
+  }
+
+  // ── DEEP OCEAN: bioluminescent coral + light rays + seaweed ─────────────
+  _wOcean(g,t,off,time){
+    // Deep water gradient wash
+    g.fillStyle(0x001a33,1); g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
+    // Animated light rays from surface
+    const rayA=0.04+Math.sin(time*0.0008)*0.02;
+    for(let i=0;i<5;i++){
+      const rx=(i*W/4.5+off*0.18)%W;
+      const rw=6+Math.sin(time*0.0012+i*1.4)*3;
+      g.fillStyle(0x0088ff,rayA);
+      g.fillRect(rx-rw/2,0,rw,TUNNEL_TOP);
+      g.fillStyle(0x0066cc,rayA*0.5);
+      g.fillRect(rx-rw*1.5,0,rw*0.5,TUNNEL_TOP);
+    }
+    // Seaweed on floor wall — wavy columns
+    g.lineStyle(2,0x00cc66,0.55);
+    for(let x=-(off%38)%38+10;x<W;x+=38){
+      const baseY=TUNNEL_BOTTOM;
+      g.beginPath(); g.moveTo(x,baseY);
+      for(let seg=0;seg<6;seg++){
+        const sy=baseY+(seg+1)*(H-TUNNEL_BOTTOM)/6;
+        const sx=x+Math.sin(time*0.0016+x*0.04+seg*0.8)*5;
+        g.lineTo(sx,sy);
+      }
+      g.strokePath();
+    }
+    // Ceiling coral — stubby blobs
+    const seed=Math.floor(off/52);
+    for(let i=0;i<7;i++){
+      const cx=((i*97+seed*43)%W+W)%W;
+      const ch=4+((i*31+seed*11)%7);
+      g.fillStyle(i%2===0?0xff4488:0x44ffaa,0.7);
+      g.fillRect(cx-3,TUNNEL_TOP-ch,6,ch);
+      g.fillRect(cx-5,TUNNEL_TOP-ch-3,10,3);
+    }
+    // Bioluminescent glow strip
+    g.fillStyle(0x0055ff,0.07+Math.sin(time*0.0022)*0.03);
+    g.fillRect(0,TUNNEL_TOP-6,W,6); g.fillRect(0,TUNNEL_BOTTOM,W,6);
+  }
+
+  // ── SKY HIGH: drifting clouds in walls + sun rays + horizon band ─────────
+  _wSky(g,t,off,time){
+    // Bright sky base
+    g.fillStyle(0x5599cc,1); g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
+    // Horizon glow band
+    g.fillStyle(0xffeedd,0.18); g.fillRect(0,TUNNEL_TOP-6,W,6);
+    g.fillStyle(0xffcc88,0.1);  g.fillRect(0,TUNNEL_BOTTOM,W,6);
+    // Sun rays — radiating from top-left
+    const sunA=0.05+Math.sin(time*0.0007)*0.02;
+    for(let i=0;i<6;i++){
+      const angle=-0.15+i*0.08;
+      const len=TUNNEL_TOP*1.2;
+      g.fillStyle(0xfffacc,sunA*(1-i*0.12));
+      g.fillRect(20+i*12,0,4,TUNNEL_TOP);
+    }
+    // Fluffy clouds in top wall zone
+    const coff=off*0.4;
+    for(let c=0;c<4;c++){
+      const cx=((c*160+coff)%(W+80))-40;
+      const cy=6+c*7+Math.sin(time*0.001+c)*3;
+      const cw=50+c*15; const ch2=14+c*3;
+      g.fillStyle(0xffffff,0.22+c*0.04);
+      g.fillRect(cx,cy,cw,ch2);
+      g.fillRect(cx+8,cy-6,cw-16,8);
+      g.fillRect(cx+cw*0.35,cy-9,cw*0.3,8);
+    }
+    // Bottom-wall distant clouds (lighter)
+    for(let c=0;c<3;c++){
+      const cx=((c*200+coff*0.7+90)%(W+80))-40;
+      const cy=TUNNEL_BOTTOM+5+c*6;
+      const cw=60+c*10;
+      g.fillStyle(0xeeeeff,0.16);
+      g.fillRect(cx,cy,cw,12);
+      g.fillRect(cx+10,cy-5,cw-20,7);
+    }
+    // Sky glow edge
+    g.fillStyle(0xaaddff,0.12+Math.sin(time*0.0018)*0.04);
+    g.fillRect(0,TUNNEL_TOP-5,W,5); g.fillRect(0,TUNNEL_BOTTOM,W,5);
+  }
+
+  // ── CYBER FACTORY: metal plates + rivets + warning stripes ──────────────
+  _wFactory(g,t,off,time){
+    // Dark corrugated metal base
+    g.fillStyle(0x111108,1); g.fillRect(0,0,W,TUNNEL_TOP); g.fillRect(0,TUNNEL_BOTTOM,W,H-TUNNEL_BOTTOM);
+    // Horizontal plate seams
+    g.lineStyle(1,0x333322,0.6);
+    for(let y=0;y<TUNNEL_TOP;y+=14){
+      g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.strokePath();
+    }
+    for(let y=TUNNEL_BOTTOM;y<H;y+=14){
+      g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.strokePath();
+    }
+    // Vertical plate seams
+    g.lineStyle(1,0x2a2a18,0.4);
+    for(let x=-(off%56)%56;x<W;x+=56){
+      g.beginPath();g.moveTo(x,0);g.lineTo(x,TUNNEL_TOP);g.strokePath();
+      g.beginPath();g.moveTo(x,TUNNEL_BOTTOM);g.lineTo(x,H);g.strokePath();
+    }
+    // Warning stripes near tunnel edge
+    const stripeW=10;
+    for(let x=-(off*0.5%28)%28;x<W;x+=28){
+      const a=0.55+Math.sin(time*0.003)*0.12;
+      g.fillStyle(0xffaa00,a); g.fillRect(x,TUNNEL_TOP-stripeW,14,stripeW);
+      g.fillStyle(0x111108,a); g.fillRect(x+14,TUNNEL_TOP-stripeW,14,stripeW);
+      g.fillStyle(0xffaa00,a); g.fillRect(x,TUNNEL_BOTTOM,14,stripeW);
+      g.fillStyle(0x111108,a); g.fillRect(x+14,TUNNEL_BOTTOM,14,stripeW);
+    }
+    // Rivets along plate edges
+    const rseed=Math.floor(off/40);
+    for(let i=0;i<8;i++){
+      const rx=((i*73+rseed*29)%W+W)%W;
+      g.fillStyle(0x888866,0.75);
+      g.fillRect(rx-2,TUNNEL_TOP-18,4,4);
+      g.fillRect(rx-2,TUNNEL_BOTTOM+14,4,4);
+    }
+    // Steam vent slots in wall
+    const ventA=0.15+Math.sin(time*0.004)*0.1;
+    for(let i=0;i<3;i++){
+      const vx=((i*140+off*0.3)%(W+40))-20;
+      g.fillStyle(0x88aaaa,ventA);
+      g.fillRect(vx,TUNNEL_TOP-4,20,4);
+      g.fillRect(vx+30,TUNNEL_BOTTOM,20,4);
+    }
+    // Amber glow near edges
+    g.fillStyle(0xff6600,0.05+Math.sin(time*0.0025)*0.03);
+    g.fillRect(0,TUNNEL_TOP-5,W,5); g.fillRect(0,TUNNEL_BOTTOM,W,5);
   }
 
   _buildPlayer(){
@@ -1077,12 +1206,6 @@ class GameScene extends Phaser.Scene{
     this.flipCooldown=0.12;
     this.gravDir*=-1;
     this._levelFlips++;
-    // Mirror Dimension: flip camera 180° on every gravity flip
-    if(this.theme&&this.theme.style==='mirror'){
-      this._mirrorFlipped=!this._mirrorFlipped;
-      this.cameras.main.setAngle(this._mirrorFlipped?180:0);
-      this.cameras.main.flash(55,180,0,255,false);
-    }
     // Gentle push — preserves much of existing momentum, feels floaty
     this.vy=lerp(this.vy,this.gravDir*-FLIP_KICK,0.52);
     this.cameras.main.flash(45,20,60,160,false);
@@ -1149,15 +1272,27 @@ class GameScene extends Phaser.Scene{
       if(p){p.setActive(true).setVisible(true);p.x=W+4;p.y=Phaser.Math.Between(TUNNEL_TOP+10,TUNNEL_BOTTOM-10);p.vx=-(Phaser.Math.Between(70,140));p.vy=(Math.random()-0.5)*12;p.life=1.2;p.setTint(0x444444);p.setScale(1);}
     } else if(style==='factory'&&this._ambientT>0.25){
       this._ambientT=0;
-      // Steam from walls
+      // Steam/sparks from walls
       const fromTop=Math.random()<0.5;
       let p=this._poolParticle();
-      if(p){p.setActive(true).setVisible(true);p.x=Phaser.Math.Between(20,W-20);p.y=fromTop?TUNNEL_TOP+4:TUNNEL_BOTTOM-4;p.vx=(Math.random()-0.5)*20;p.vy=fromTop?Phaser.Math.Between(12,36):-Phaser.Math.Between(12,36);p.life=0.9;p.setTint(Math.random()<0.5?0xff8800:0xffcc44);p.setScale(Phaser.Math.Between(1,3));}
-    } else if(style==='mirror'&&this._ambientT>0.3){
+      const isSpark=Math.random()<0.35;
+      if(p){p.setActive(true).setVisible(true);p.x=Phaser.Math.Between(20,W-20);p.y=fromTop?TUNNEL_TOP+4:TUNNEL_BOTTOM-4;p.vx=(Math.random()-0.5)*(isSpark?45:18);p.vy=fromTop?Phaser.Math.Between(10,30):-Phaser.Math.Between(10,30);p.life=isSpark?0.45:1.1;p.setTint(isSpark?0xffaa00:(Math.random()<0.5?0xaaaaaa:0xdddddd));p.setScale(isSpark?1:Phaser.Math.Between(2,4));}
+    } else if(style==='void'&&this._ambientT>0.35){
       this._ambientT=0;
-      // Glitchy purple/pink sparkles
+      // Shooting stars — fast horizontal streaks
       let p=this._poolParticle();
-      if(p){p.setActive(true).setVisible(true);p.x=Phaser.Math.Between(0,W);p.y=Phaser.Math.Between(TUNNEL_TOP,TUNNEL_BOTTOM);p.vx=(Math.random()-0.5)*35;p.vy=(Math.random()-0.5)*35;p.life=0.5;p.setTint(Math.random()<0.5?0xff00ff:0x88ffff);p.setScale(Phaser.Math.Between(1,3));}
+      if(p){p.setActive(true).setVisible(true);p.x=W+4;p.y=Phaser.Math.Between(2,TUNNEL_TOP-2);p.vx=-(Phaser.Math.Between(220,420));p.vy=(Math.random()-0.5)*18;p.life=0.55;p.setTint(Math.random()<0.5?0xffffff:0xaaaaee);p.setScale(Math.random()<0.3?1:2);}
+      // Also occasional bottom-wall star
+      let p2=this._poolParticle();
+      if(p2){p2.setActive(true).setVisible(true);p2.x=W+4;p2.y=Phaser.Math.Between(TUNNEL_BOTTOM+2,H-2);p2.vx=-(Phaser.Math.Between(180,360));p2.vy=(Math.random()-0.5)*15;p2.life=0.5;p2.setTint(0xccccff);p2.setScale(1);}
+    } else if(style==='cyber'&&this._ambientT>0.22){
+      this._ambientT=0;
+      // Matrix fragments — green glyphs raining from ceiling
+      let p=this._poolParticle();
+      if(p){p.setActive(true).setVisible(true);p.x=Phaser.Math.Between(0,W);p.y=TUNNEL_TOP+2;p.vx=(Math.random()-0.5)*6;p.vy=Phaser.Math.Between(60,140);p.life=0.8;p.setTint(Math.random()<0.6?0x00ff44:0x00cc33);p.setScale(Math.random()<0.4?2:1);}
+      // Rising from floor too
+      let p2=this._poolParticle();
+      if(p2){p2.setActive(true).setVisible(true);p2.x=Phaser.Math.Between(0,W);p2.y=TUNNEL_BOTTOM-2;p2.vx=(Math.random()-0.5)*6;p2.vy=-Phaser.Math.Between(50,110);p2.life=0.7;p2.setTint(0x00ff44);p2.setScale(1);}
     }
   }
 
@@ -1373,12 +1508,6 @@ class GameScene extends Phaser.Scene{
     for(const obs of this.obstacles.getChildren().slice()){
       obs.x-=this.speed*dt;
       if(obs.obstacleType==='moving'){obs.y+=obs.moveSpeed*dt;if(obs.y<obs.minY||obs.y>obs.maxY)obs.moveSpeed*=-1;}
-      // Mirror Dimension: some obstacles invisible based on gravity direction
-      if(style==='mirror'){
-        if(obs._mirrorHidden===undefined)obs._mirrorHidden=Math.random()<0.44;
-        obs.setAlpha(obs._mirrorHidden?(this.gravDir>0?0.06:1.0):1.0);
-      }
-      if(obs._mirrorHidden&&obs.alpha<0.2){continue;} // invisible = no collision
       if(this._aabb(this.player,obs)){this._die();return;}
       if(!this._nearMissObstacles.has(obs)&&this._nearMissCheck(this.player,obs)){
         this._nearMissObstacles.add(obs);
