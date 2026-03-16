@@ -168,7 +168,7 @@ function makeChallengeUrl(name,score){
 function wireShareBtns(containerId,name,score){
   const cont=document.getElementById(containerId);if(!cont)return;
   const url=makeChallengeUrl(name,score);
-  const buildMessage=(shortUrl)=>`\uD83C\uDFC6 GRAVITY FLIPPER CHALLENGE\n${name} scored ${score} points!\nThink you can beat them? \uD83D\uDE0F\nTry now \uD83D\uDC49 ${shortUrl}`;
+  const buildMessage=(shortUrl)=>`\uD83C\uDFAE ${name} scored ${score} pts in Gravity Flipper!\nCan you beat them? \uD83D\uDC49 ${shortUrl}`;
   const showButtons=(shortUrl)=>{
     const shareText=buildMessage(shortUrl);
     const msg=encodeURIComponent(shareText);
@@ -179,7 +179,7 @@ function wireShareBtns(containerId,name,score){
       <button class="share-btn share-cp" id="${containerId}-cp">\uD83D\uDD17 COPY LINK</button>`;
     addTap(document.getElementById(`${containerId}-wa`),()=>{
       if(navigator.share){
-        navigator.share({title:'Gravity Flipper Challenge',text:shareText,url:''}).catch(()=>{});
+        navigator.share({text:shareText}).catch(()=>{});
       } else {
         window.open(`https://wa.me/?text=${msg}`,'_blank');
       }
