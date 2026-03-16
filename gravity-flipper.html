@@ -244,14 +244,14 @@ const CHARACTERS=[
 
 // ── Level definitions ─────────────────────────────────────────────────────────
 const LEVELS=[
-  {distance:2600,startSpeed:260,endSpeed:285,gap:200,spacing:430,types:['barrier'],                                     coins:7, required:3,hint:'FLIP GRAVITY TO DODGE'},
-  {distance:3000,startSpeed:295,endSpeed:328,gap:178,spacing:370,types:['spike','barrier'],                             coins:9, required:4,hint:'WATCH THE SPIKES'},
-  {distance:3300,startSpeed:335,endSpeed:372,gap:158,spacing:318,types:['spike','barrier'],                             coins:9, required:5,hint:'SPEED INCREASING'},
-  {distance:3600,startSpeed:378,endSpeed:416,gap:140,spacing:272,types:['spike','barrier','moving'],                    coins:11,required:6,hint:'OBSTACLES MOVE NOW'},
-  {distance:3900,startSpeed:420,endSpeed:458,gap:123,spacing:235,types:['spike','barrier','moving','laser'],            coins:11,required:7,hint:'LASERS AHEAD!'},
-  {distance:4200,startSpeed:462,endSpeed:498,gap:108,spacing:203,types:['spike','barrier','moving','laser','gauntlet'], coins:13,required:8,hint:'GAUNTLET MODE'},
-  {distance:4600,startSpeed:502,endSpeed:536,gap:95, spacing:178,types:['spike','barrier','moving','laser','gauntlet'], coins:13,required:9,hint:'ALMOST THERE'},
-  {distance:5000,startSpeed:540,endSpeed:572,gap:84, spacing:156,types:['spike','barrier','moving','laser','gauntlet'], coins:15,required:10,hint:'MAXIMUM INTENSITY'},
+  {distance:2600,startSpeed:252,endSpeed:272,gap:208,spacing:445,types:['barrier'],                                     coins:7, required:3,hint:'FLIP GRAVITY TO DODGE'},
+  {distance:3000,startSpeed:276,endSpeed:300,gap:188,spacing:382,types:['spike','barrier'],                             coins:9, required:4,hint:'WATCH THE SPIKES'},
+  {distance:3300,startSpeed:304,endSpeed:332,gap:168,spacing:324,types:['spike','barrier'],                             coins:9, required:5,hint:'SPEED INCREASING'},
+  {distance:3600,startSpeed:336,endSpeed:370,gap:150,spacing:278,types:['spike','barrier','moving'],                    coins:11,required:6,hint:'OBSTACLES MOVE NOW'},
+  {distance:3900,startSpeed:374,endSpeed:412,gap:132,spacing:240,types:['spike','barrier','moving','laser'],            coins:11,required:7,hint:'LASERS AHEAD!'},
+  {distance:4200,startSpeed:416,endSpeed:452,gap:115,spacing:206,types:['spike','barrier','moving','laser','gauntlet'], coins:13,required:8,hint:'GAUNTLET MODE'},
+  {distance:4600,startSpeed:456,endSpeed:490,gap:100,spacing:180,types:['spike','barrier','moving','laser','gauntlet'], coins:13,required:9,hint:'ALMOST THERE'},
+  {distance:5000,startSpeed:494,endSpeed:526,gap:87, spacing:158,types:['spike','barrier','moving','laser','gauntlet'], coins:15,required:10,hint:'MAXIMUM INTENSITY'},
 ];
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
 
@@ -269,13 +269,42 @@ function saveScore(score,levelIndex){
 }
 function getScores(){return JSON.parse(localStorage.getItem('gf_scores')||'[]');}
 
+// ── Daily challenges ──────────────────────────────────────────────────────────
+const DAILY_POOL=[
+  {type:'coins', goal:6,  label:'Collect 6+ coins in one level',     bonus:50},
+  {type:'coins', goal:10, label:'Collect 10+ coins in one level',    bonus:80},
+  {type:'flips', goal:10, label:'Finish a level with \u226410 flips',bonus:70},
+  {type:'flips', goal:6,  label:'Finish a level with \u22646 flips', bonus:110},
+  {type:'finish',goal:1,  label:'Reach any finish line',             bonus:100},
+  {type:'level', goal:3,  label:'Reach level 3',                     bonus:120},
+  {type:'score', goal:180,label:'Score 180+ points in one level',    bonus:90},
+  {type:'rare',  goal:2,  label:'Collect 2 rare coins in one level', bonus:130},
+];
+function getDailyChallenges(){
+  const today=new Date().toDateString();
+  const raw=JSON.parse(localStorage.getItem('gf_daily')||'null');
+  if(raw&&raw.date===today)return raw;
+  const day=Math.floor(Date.now()/86400000);
+  let seed=(day^0x5f3759df)>>>0;
+  const rng=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/0xffffffff;};
+  const pool=[...DAILY_POOL];const challenges=[];
+  while(challenges.length<3&&pool.length>0){
+    const idx=Math.floor(rng()*pool.length);
+    challenges.push({...pool.splice(idx,1)[0],done:false});
+  }
+  const data={date:today,challenges};
+  localStorage.setItem('gf_daily',JSON.stringify(data));
+  return data;
+}
+function saveDailyChallenges(data){localStorage.setItem('gf_daily',JSON.stringify(data));}
+
 // ── Audio Manager ─────────────────────────────────────────────────────────────
 class AudioMgr{
   constructor(){
     this.ctx=null;this.master=null;this.sfxBus=null;this.musicBus=null;
     this.muted=localStorage.getItem('gf_mute')==='1';
     this._mPlaying=false;this._mTimer=null;this._mNoteIdx=0;this._mNextTime=0;
-    this._melody=null;
+    this._melody=null;this._musicTempoMult=1.0;
   }
   init(){
     if(this.ctx)return;
@@ -423,7 +452,7 @@ class AudioMgr{
 
   startMusic(levelIndex=0){
     if(!this.ctx||this._mPlaying)return;
-    this._mPlaying=true;this._mNoteIdx=0;
+    this._mPlaying=true;this._mNoteIdx=0;this._musicTempoMult=1.0;
     this._melody=this._getMelody(levelIndex);
     this._mNextTime=this.ctx.currentTime+0.1;
     this._musicLoop();
@@ -456,7 +485,7 @@ class AudioMgr{
       g.gain.setValueAtTime(1,t+noteLen*0.55);g.gain.linearRampToValueAtTime(0,t+noteLen);
       o.connect(g);g.connect(this.musicBus);o.start(t);o.stop(t+noteLen+0.01);
     }
-    this._mNextTime+=dur;this._mNoteIdx++;
+    this._mNextTime+=dur*this._musicTempoMult;this._mNoteIdx++;
   }
   toggleMute(){
     this.muted=!this.muted;
@@ -642,6 +671,12 @@ class BootScene extends Phaser.Scene{
     // ─ Particle / Star ─
     g.clear();g.fillStyle(0xffffff);g.fillRect(0,0,4,4);g.generateTexture('particle',4,4);
     g.clear();g.fillStyle(0xffffff);g.fillRect(0,0,2,2);g.generateTexture('star',2,2);
+    // ─ Fireball (lava hazard) ─
+    g.clear();
+    g.fillStyle(0xff2200);g.fillCircle(6,6,6);
+    g.fillStyle(0xff7700);g.fillCircle(6,6,4);
+    g.fillStyle(0xffee00);g.fillCircle(6,6,2);
+    g.generateTexture('fireball',12,12);
     g.destroy();
   }
   create(){INPUT.init(this.sys.game.canvas);this.scene.start('Menu');}
@@ -710,6 +745,7 @@ class MenuScene extends Phaser.Scene{
         <div class="ov-sub" style="color:#888">REACHED LEVEL ${reach}</div>
         <button class="ov-btn${nameValid?'':' ov-btn-disabled'}" id="ov-start" style="margin-top:10px;border-color:${nameValid?'#00ffff':'#444'};color:${nameValid?'#00ffff':'#444'}">&#9654; PLAY</button>
         <button class="ov-btn ov-btn-sm" id="ov-hof" style="border-color:#ffdd00;color:#ffdd00;margin-top:4px">&#9733; HALL OF FAME</button>
+        <button class="ov-btn ov-btn-sm" id="ov-daily" style="border-color:#ffaa00;color:#ffaa00;margin-top:4px">&#128197; DAILY CHALLENGES</button>
         <div class="ov-sub" style="color:#444;margin-top:4px">TAP = FLIP GRAVITY</div>
       </div>`,'rgba(0,0,10,0.96)');
     CHARACTERS.forEach((_,i)=>addTap(document.getElementById('ch'+i),()=>this._pickChar(i)));
@@ -730,6 +766,7 @@ class MenuScene extends Phaser.Scene{
     };
     addTap(document.getElementById('ov-start'),go);
     addTap(document.getElementById('ov-hof'),()=>{OV.hide();this.scene.start('Leaderboard');});
+    addTap(document.getElementById('ov-daily'),()=>this._showDailyOverlay());
     const nameInp=document.getElementById('gf-name-inp');
     if(nameInp)nameInp.addEventListener('input',()=>{
       const ok=nameInp.value.replace(/\s/g,'').length>=2;
@@ -757,6 +794,28 @@ class MenuScene extends Phaser.Scene{
       b.style.borderColor=sel?tr.previewGrad[0]:'#334455';
     });
   }
+  _showDailyOverlay(){
+    const daily=getDailyChallenges();
+    const doneAll=daily.challenges.every(c=>c.done);
+    const cHTML=daily.challenges.map(c=>{
+      const col=c.done?'#00ff88':'#888888';
+      const ic=c.done?'\u2713':'\u25cb';
+      return `<div style="margin:6px 0;padding:8px 10px;border:1px solid ${c.done?'#00ff88':'#334455'};text-align:left;display:flex;align-items:center;gap:10px;">
+        <span style="color:${col};font-size:18px;flex-shrink:0">${ic}</span>
+        <div><div style="color:${col};font-size:8px">${c.label}</div>
+        <div style="color:#ffaa00;font-size:7px;margin-top:2px">+${c.bonus} BONUS PTS</div></div>
+      </div>`;
+    }).join('');
+    OV.show('ov-daily-screen',
+      `<div class="ov-wrap">
+        <div class="ov-title" style="color:#ffaa00">\uD83D\uDCC5 DAILY</div>
+        <div class="ov-sub" style="color:#555;margin-bottom:6px">${daily.date}</div>
+        ${doneAll?'<div class="ov-sub" style="color:#00ff88;margin-bottom:6px">\u2605 ALL COMPLETE!</div>':''}
+        ${cHTML}
+        <button class="ov-btn ov-btn-sm" id="ov-daily-close" style="margin-top:10px">CLOSE</button>
+      </div>`,'rgba(0,0,8,0.97)');
+    addTap(document.getElementById('ov-daily-close'),()=>OV.hide());
+  }
 }
 
 // ── GameScene ─────────────────────────────────────────────────────────────────
@@ -781,6 +840,9 @@ class GameScene extends Phaser.Scene{
     this.laserList=[];
     this._levelPowerup=Math.random()<0.5?'shield':'magnet';
     this.hasShield=false; this.magnetTimer=0; this.powerupType=null; this.powerupMax=0;
+    this._prevMagnetActive=false; this._prevShieldActive=false;
+    this._levelFlips=0; this._rareCoins=0;
+    this.fireballs=[]; this._fireballTimer=2.0;
 
     this.obstacles=this.add.group();
     this.coins=this.add.group();
@@ -1089,6 +1151,7 @@ class GameScene extends Phaser.Scene{
     this._inputBuf=0;
     this.flipCooldown=0.12;
     this.gravDir*=-1;
+    this._levelFlips++;
     // Gentle push — preserves much of existing momentum, feels floaty
     this.vy=lerp(this.vy,this.gravDir*-FLIP_KICK,0.52);
     this.cameras.main.flash(45,20,60,160,false);
@@ -1188,9 +1251,12 @@ class GameScene extends Phaser.Scene{
   }
 
   _doMoving(sx,wx){
-    const b=this.add.image(sx,H/2,'block').setScale(1.6).setDepth(6).setTint(this.theme.blockTint);
+    const isIce=this.theme.style==='ice';
+    const scaleX=isIce?0.45:1.6, scaleY=isIce?2.8:1.6;
+    const tint=isIce?0x99eeff:this.theme.blockTint;
+    const b=this.add.image(sx,H/2,'block').setScale(scaleX,scaleY).setDepth(6).setTint(tint);
     b.obstacleType='moving';
-    b.moveSpeed=lerp(60,170,this.levelIndex/7)*(Math.random()>0.5?1:-1);
+    b.moveSpeed=lerp(isIce?150:60,isIce?260:170,this.levelIndex/7)*(Math.random()>0.5?1:-1);
     b.minY=TUNNEL_TOP+24;b.maxY=TUNNEL_BOTTOM-24;
     this.obstacles.add(b);
     this._placeCoin(sx-70,Math.random()>0.5?TUNNEL_TOP+38:TUNNEL_BOTTOM-38,wx-70);
@@ -1198,8 +1264,14 @@ class GameScene extends Phaser.Scene{
 
   _doLaser(sx,wx){
     const d=this.levelIndex/7;
+    const isCyber=this.theme.style==='cyber';
     const gfx=this.add.graphics().setDepth(7);
-    this.laserList.push({gfx,x:sx,period:lerp(2.4,1.3,d),phase:Math.random(),onRatio:lerp(0.35,0.55,d)});
+    this.laserList.push({
+      gfx,x:sx,
+      period:isCyber?lerp(0.7,0.4,d):lerp(2.4,1.3,d),
+      phase:Math.random(),
+      onRatio:isCyber?lerp(0.55,0.72,d):lerp(0.35,0.55,d),
+    });
     this._placeCoin(sx-80,H/2,wx-80);
   }
 
@@ -1268,6 +1340,10 @@ class GameScene extends Phaser.Scene{
       if(this.flipCooldown<=0)this._doFlip();
     }
     const prog=clamp(this.distTraveled/this.lvl.distance,0,1);
+    // Dynamic music tempo: speeds up approaching finish
+    if(prog>0.8)AUDIO._musicTempoMult=lerp(1.0,0.70,clamp((prog-0.8)/0.2,0,1));
+    else if(prog>0.5)AUDIO._musicTempoMult=lerp(1.0,0.88,clamp((prog-0.5)/0.3,0,1));
+    else AUDIO._musicTempoMult=1.0;
     // Non-linear: ease in slow, ramp hard in final 30%
     const isIntense=prog>0.70;
     const baseSpeed=lerp(this.lvl.startSpeed*0.88,this.lvl.endSpeed,prog);
@@ -1357,6 +1433,28 @@ class GameScene extends Phaser.Scene{
       }
     }
 
+    // Lava fireballs
+    if(this.theme.style==='lava'){
+      this._fireballTimer-=dt;
+      if(this._fireballTimer<=0){
+        this._fireballTimer=1.8+Math.random()*2.2;
+        const wb=this.distTraveled+(W-PLAYER_X)+Phaser.Math.Between(80,240);
+        const fb=this.add.image(this._w2s(wb),TUNNEL_TOP+6,'fireball').setDepth(8).setScale(1.4);
+        fb.worldX=wb;fb.vy=20+Math.random()*40;
+        this.fireballs.push(fb);
+      }
+    }
+    for(let i=this.fireballs.length-1;i>=0;i--){
+      const fb=this.fireballs[i];
+      fb.vy+=200*dt;
+      fb.y+=fb.vy*dt;
+      fb.x=this._w2s(fb.worldX);
+      fb.setRotation(fb.vy*0.008);
+      if(fb.y>TUNNEL_BOTTOM+20||fb.x<-24){fb.destroy();this.fireballs.splice(i,1);continue;}
+      const dx=this.player.x-fb.x,dy=this.player.y-fb.y;
+      if(Math.sqrt(dx*dx+dy*dy)<16){this._die();return;}
+    }
+
     this.particles.getChildren().forEach(p=>{
       if(!p.active)return;
       p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=0.91;p.vy*=0.91;
@@ -1399,17 +1497,23 @@ class GameScene extends Phaser.Scene{
     }
     // Power-up bar
     this.powerupGfx.clear();
-    if(this.powerupType==='magnet'&&this.magnetTimer>0){
+    const magnetActive=this.magnetTimer>0,shieldActive=this.hasShield;
+    if(this._prevMagnetActive&&!magnetActive)this._floatText(80,55,'MAGNET OFF','#00aacc');
+    if(this._prevShieldActive&&!shieldActive)this._floatText(80,55,'SHIELD GONE','#ff4444');
+    this._prevMagnetActive=magnetActive;this._prevShieldActive=shieldActive;
+    if(this.powerupType==='magnet'&&magnetActive){
       this.powerupTxt.setText('\u2726 MAGNET');
       const pct=this.magnetTimer/this.powerupMax;
+      const warn=this.magnetTimer<3;
+      const flash=warn?0.55+0.45*Math.sin(time*0.018):0.9;
       this.powerupGfx.fillStyle(0x004466,0.7);this.powerupGfx.fillRect(10,50,80,7);
-      this.powerupGfx.fillStyle(0x00ffff,0.9);this.powerupGfx.fillRect(10,50,80*pct,7);
-    } else if(this.powerupType==='shield'&&this.hasShield){
+      this.powerupGfx.fillStyle(warn?0xffff00:0x00ffff,flash);this.powerupGfx.fillRect(10,50,80*pct,7);
+    } else if(this.powerupType==='shield'&&shieldActive){
       this.powerupTxt.setText('\u25c9 SHIELD');
       this.powerupGfx.fillStyle(0x00ff88,0.7);this.powerupGfx.fillRect(10,50,80,7);
     } else {
       this.powerupTxt.setText('');
-      if(!this.hasShield&&this.magnetTimer<=0)this.powerupType=null;
+      if(!shieldActive&&!magnetActive)this.powerupType=null;
     }
     this._themeAmbient(dt,time);
     this._drawWalls(this.distTraveled,time);
@@ -1447,6 +1551,7 @@ class GameScene extends Phaser.Scene{
     }
     const pts=c.isRare?500:100;
     this.coinsCollected++; this.levelScore+=pts;
+    if(c.isRare)this._rareCoins++;
     const req=this.lvl.required,met=this.coinsCollected>=req;
     this.coinTxt.setText(`\u25c6 ${this.coinsCollected}/${req}`).setColor(met?'#00ff88':'#ffdd00');
     this._emitParticles(c.x,c.y,c.isRare?[0x9933ff,0xcc88ff,0xffffff]:[0xffdd00,0xffee66,0xffffff],c.isRare?24:14,80,170);
@@ -1513,10 +1618,32 @@ class GameScene extends Phaser.Scene{
     g.fillStyle(0xffff00,0.9);g.fillRect(W-14,TUNNEL_TOP+2,6,6);
   }
 
+  _checkDailyChallenges(coins,flips,finished){
+    const daily=getDailyChallenges();let bonus=0;
+    daily.challenges.forEach(c=>{
+      if(c.done)return;
+      let met=false;
+      if(c.type==='coins'&&coins>=c.goal)met=true;
+      else if(c.type==='flips'&&finished&&flips<=c.goal)met=true;
+      else if(c.type==='finish'&&finished)met=true;
+      else if(c.type==='level'&&this.levelIndex+1>=c.goal)met=true;
+      else if(c.type==='score'&&this.levelScore>=c.goal)met=true;
+      else if(c.type==='rare'&&this._rareCoins>=c.goal)met=true;
+      if(met){c.done=true;bonus+=c.bonus;}
+    });
+    if(bonus>0){
+      saveDailyChallenges(daily);
+      this.totalScore+=bonus;
+      this._floatText(W/2,H/2-70,`\u2605 DAILY! +${bonus}pts`,'#ffaa00');
+      this.cameras.main.flash(220,255,170,0,false);
+    }
+  }
+
   _completeLEVEL(){
     if(this.levelDone||!this.alive)return;
     this.levelDone=true;this.alive=false;
     const passed=this.coinsCollected>=this.lvl.required;
+    this._checkDailyChallenges(this.coinsCollected,this._levelFlips,passed);
     if(passed){
       AUDIO.complete();
       this.cameras.main.flash(300,50,255,100,false);
@@ -1557,6 +1684,7 @@ class GameScene extends Phaser.Scene{
       this.tweens.add({targets:p,alpha:0,scale:0,duration:600+Math.random()*500,onComplete:()=>p.destroy()});
     }
     this.player.setVisible(false);this.trail.forEach(t=>t.setVisible(false));
+    this.fireballs.forEach(fb=>{try{fb.destroy();}catch(e){}});this.fireballs=[];
     const fs=this.totalScore+this.levelScore;
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     if(fs>best)localStorage.setItem('gf_best',fs);
