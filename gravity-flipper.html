@@ -234,11 +234,6 @@ const TRACKS=[
    bg:'#080400',wallFill:0x140800,wallLine:0xff6600,wallGlow:0x662200,blockTint:0xff8833,spikeTint:0xffee00,laserCol:0xff4400},
 ];
 function getTrack(){const id=localStorage.getItem('gf_track')||'neon';return TRACKS.find(t=>t.id===id)||TRACKS[0];}
-// Level-theme rotation: player's chosen track is level 1; subsequent levels cycle forward
-function getLevelTrack(lvlIdx){
-  const base=TRACKS.findIndex(t=>t.id===(localStorage.getItem('gf_track')||'neon'));
-  return TRACKS[(Math.max(0,base)+lvlIdx)%TRACKS.length];
-}
 
 // ── Character definitions ─────────────────────────────────────────────────────
 const CHARACTERS=[
@@ -249,19 +244,26 @@ const CHARACTERS=[
 ];
 
 // ── Level definitions ─────────────────────────────────────────────────────────
+// Coins placed always = required + 3 (buffer for misses)
 const LEVELS=[
-  {distance:2600,startSpeed:252,endSpeed:272,gap:208,spacing:445,types:['barrier'],                                     coins:7, required:3,hint:'FLIP GRAVITY TO DODGE'},
-  {distance:3000,startSpeed:276,endSpeed:300,gap:188,spacing:382,types:['spike','barrier'],                             coins:9, required:4,hint:'WATCH THE SPIKES'},
-  {distance:3300,startSpeed:304,endSpeed:332,gap:168,spacing:324,types:['spike','barrier'],                             coins:9, required:5,hint:'SPEED INCREASING'},
-  {distance:3600,startSpeed:336,endSpeed:370,gap:150,spacing:278,types:['spike','barrier','moving'],                    coins:11,required:6,hint:'OBSTACLES MOVE NOW'},
-  {distance:3900,startSpeed:374,endSpeed:412,gap:132,spacing:240,types:['spike','barrier','moving','laser'],            coins:11,required:7,hint:'LASERS AHEAD!'},
-  {distance:4200,startSpeed:416,endSpeed:452,gap:115,spacing:206,types:['spike','barrier','moving','laser','gauntlet'], coins:13,required:8,hint:'GAUNTLET MODE'},
-  {distance:4600,startSpeed:456,endSpeed:490,gap:100,spacing:180,types:['spike','barrier','moving','laser','gauntlet'], coins:13,required:9,hint:'ALMOST THERE'},
-  {distance:5000,startSpeed:494,endSpeed:526,gap:87, spacing:158,types:['spike','barrier','moving','laser','gauntlet'], coins:15,required:10,hint:'MAXIMUM INTENSITY'},
-  {distance:5500,startSpeed:530,endSpeed:562,gap:78, spacing:142,types:['spike','barrier','moving','laser','gauntlet'], coins:15,required:11,hint:'DEEP PRESSURE'},
-  {distance:6000,startSpeed:566,endSpeed:598,gap:70, spacing:128,types:['spike','barrier','moving','laser','gauntlet'], coins:17,required:12,hint:'STORM INCOMING'},
-  {distance:6500,startSpeed:602,endSpeed:634,gap:63, spacing:115,types:['spike','barrier','moving','laser','gauntlet'], coins:17,required:12,hint:'FACTORY STORM'},
-  {distance:7000,startSpeed:638,endSpeed:672,gap:57, spacing:103,types:['spike','barrier','moving','laser','gauntlet'], coins:19,required:13,hint:'BEYOND LIMITS'},
+  // Lvl 1-2: short intro
+  {distance:1800,startSpeed:200,endSpeed:220,gap:220,spacing:480,types:['barrier'],                                     coins:4, required:1,hint:'FLIP GRAVITY TO DODGE'},
+  {distance:2200,startSpeed:228,endSpeed:252,gap:205,spacing:430,types:['spike','barrier'],                             coins:4, required:1,hint:'WATCH THE SPIKES'},
+  // Lvl 3-4: medium
+  {distance:2800,startSpeed:258,endSpeed:286,gap:190,spacing:375,types:['spike','barrier'],                             coins:5, required:2,hint:'SPEED INCREASING'},
+  {distance:3200,startSpeed:292,endSpeed:324,gap:175,spacing:325,types:['spike','barrier','moving'],                    coins:5, required:2,hint:'OBSTACLES MOVE NOW'},
+  // Lvl 5-6: longer
+  {distance:3800,startSpeed:330,endSpeed:368,gap:158,spacing:280,types:['spike','barrier','moving','laser'],            coins:6, required:3,hint:'LASERS AHEAD!'},
+  {distance:4300,startSpeed:374,endSpeed:416,gap:142,spacing:245,types:['spike','barrier','moving','laser'],            coins:6, required:3,hint:'HOLD YOUR NERVE'},
+  // Lvl 7-8: long and intense
+  {distance:5000,startSpeed:422,endSpeed:464,gap:126,spacing:212,types:['spike','barrier','moving','laser','gauntlet'], coins:7, required:4,hint:'GAUNTLET MODE'},
+  {distance:5500,startSpeed:470,endSpeed:512,gap:112,spacing:185,types:['spike','barrier','moving','laser','gauntlet'], coins:7, required:4,hint:'MAXIMUM INTENSITY'},
+  // Lvl 9-10
+  {distance:6100,startSpeed:518,endSpeed:558,gap:98, spacing:162,types:['spike','barrier','moving','laser','gauntlet'], coins:8, required:5,hint:'DEEP PRESSURE'},
+  {distance:6600,startSpeed:564,endSpeed:604,gap:86, spacing:144,types:['spike','barrier','moving','laser','gauntlet'], coins:8, required:5,hint:'STORM INCOMING'},
+  // Lvl 11-12
+  {distance:7200,startSpeed:610,endSpeed:650,gap:75, spacing:128,types:['spike','barrier','moving','laser','gauntlet'], coins:9, required:6,hint:'FACTORY STORM'},
+  {distance:7800,startSpeed:656,endSpeed:698,gap:65, spacing:112,types:['spike','barrier','moving','laser','gauntlet'], coins:9, required:6,hint:'BEYOND LIMITS'},
 ];
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
 
@@ -744,7 +746,7 @@ class GameScene extends Phaser.Scene{
 
   create(){
     this.lvl=getLevel(this.levelIndex);
-    this.theme=getLevelTrack(this.levelIndex);
+    this.theme=getTrack(this.levelIndex);
     this.cameras.main.setBackgroundColor(this.theme.bg);
     AUDIO.init(); AUDIO.resume();
 
@@ -1839,7 +1841,7 @@ class LevelCompleteScene extends Phaser.Scene{
   create(){
     AUDIO.init();AUDIO.resume();
     if(this.isLastLevel)saveScore(this.totalScore,this.levelIndex);
-    const nt=getLevelTrack(this.isLastLevel?0:this.levelIndex+1);
+    const nt=getTrack(this.isLastLevel?0:this.levelIndex+1);
     this.cameras.main.setBackgroundColor(nt.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     const coinBonus=this.coinsCollected*100, isNew=this.totalScore>=best&&this.totalScore>0;
@@ -1883,7 +1885,7 @@ class LevelFailedScene extends Phaser.Scene{
   init(d){this.levelIndex=d.levelIndex;this.coinsCollected=d.coinsCollected;this.requiredCoins=d.requiredCoins;this.levelScore=d.levelScore;this.totalScore=d.totalScore;}
   create(){
     AUDIO.init();AUDIO.resume();
-    const theme=getLevelTrack(this.levelIndex);
+    const theme=getTrack(this.levelIndex);
     this.cameras.main.setBackgroundColor(theme.bg);
     const short=this.requiredCoins-this.coinsCollected;
     OV.show('ov-failed',
@@ -1919,7 +1921,7 @@ class DeathScene extends Phaser.Scene{
   create(){
     AUDIO.init();AUDIO.resume();
     saveScore(this.finalScore,this.levelIndex);
-    const theme=getLevelTrack(this.levelIndex);
+    const theme=getTrack(this.levelIndex);
     this.cameras.main.setBackgroundColor(theme.bg);
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     const isNew=this.finalScore>=best&&this.finalScore>0;
