@@ -172,7 +172,7 @@ function wireShareBtns(containerId,name,score){
   cont.innerHTML=`<button class="ov-btn ov-btn-sm" id="${containerId}-t" style="border-color:#ff88ff;color:#ff88ff">\u2694 CHALLENGE A FRIEND</button>`;
   addTap(document.getElementById(`${containerId}-t`),()=>{
     // Step 2: replace with share options
-    const shareText=`\uD83C\uDFAE I scored ${score} points in Gravity Flipper! Think you can beat me? \uD83D\uDC49 ${url}`;
+    const shareText=`\uD83C\uDFC6 GRAVITY FLIPPER CHALLENGE \uD83C\uDFC6\n${name} scored ${score} points!\nThink you can beat them? \uD83D\uDE0F\n\uD83D\uDC49 ${url}`;
     const msg=encodeURIComponent(shareText);
     cont.innerHTML=`
       <div class="ov-sub" style="color:#888;margin:6px 0 4px">SHARE VIA</div>
@@ -181,7 +181,7 @@ function wireShareBtns(containerId,name,score){
       <button class="share-btn share-cp" id="${containerId}-cp">\uD83D\uDD17 COPY LINK</button>`;
     addTap(document.getElementById(`${containerId}-wa`),()=>{
       if(navigator.share){
-        navigator.share({title:'Gravity Flipper Challenge',text:`\uD83C\uDFAE I scored ${score} points in Gravity Flipper! Think you can beat me?`,url:url}).catch(()=>{});
+        navigator.share({title:'Gravity Flipper Challenge',text:shareText,url:''}).catch(()=>{});
       } else {
         window.open(`https://wa.me/?text=${msg}`,'_blank');
       }
