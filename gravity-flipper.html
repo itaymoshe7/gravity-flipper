@@ -812,9 +812,9 @@ class MenuScene extends Phaser.Scene{
         <div class="ov-sub" style="color:#555;margin-bottom:6px">${daily.date}</div>
         ${doneAll?'<div class="ov-sub" style="color:#00ff88;margin-bottom:6px">\u2605 ALL COMPLETE!</div>':''}
         ${cHTML}
-        <button class="ov-btn ov-btn-sm" id="ov-daily-close" style="margin-top:10px">CLOSE</button>
+        <button class="ov-btn ov-btn-sm" id="ov-daily-close" style="margin-top:10px">\u2190 MAIN MENU</button>
       </div>`,'rgba(0,0,8,0.97)');
-    addTap(document.getElementById('ov-daily-close'),()=>OV.hide());
+    addTap(document.getElementById('ov-daily-close'),()=>this._buildMenu());
   }
 }
 
