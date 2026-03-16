@@ -244,26 +244,57 @@ const CHARACTERS=[
 ];
 
 // ── Level definitions ─────────────────────────────────────────────────────────
-// Coins placed always = required + 3 (buffer for misses)
+// weights: probability distribution for obstacle type selection each spawn.
+// Coins placed = required + 3 buffer.
 const LEVELS=[
-  // Lvl 1-2: short intro
-  {distance:1800,startSpeed:200,endSpeed:220,gap:220,spacing:480,types:['barrier'],                                     coins:4, required:1,hint:'FLIP GRAVITY TO DODGE'},
-  {distance:2200,startSpeed:228,endSpeed:252,gap:205,spacing:430,types:['spike','barrier'],                             coins:4, required:1,hint:'WATCH THE SPIKES'},
-  // Lvl 3-4: medium
-  {distance:2800,startSpeed:258,endSpeed:286,gap:190,spacing:375,types:['spike','barrier'],                             coins:5, required:2,hint:'SPEED INCREASING'},
-  {distance:3200,startSpeed:292,endSpeed:324,gap:175,spacing:325,types:['spike','barrier','moving'],                    coins:5, required:2,hint:'OBSTACLES MOVE NOW'},
-  // Lvl 5-6: longer
-  {distance:3800,startSpeed:330,endSpeed:368,gap:158,spacing:280,types:['spike','barrier','moving','laser'],            coins:6, required:3,hint:'LASERS AHEAD!'},
-  {distance:4300,startSpeed:374,endSpeed:416,gap:142,spacing:245,types:['spike','barrier','moving','laser'],            coins:6, required:3,hint:'HOLD YOUR NERVE'},
-  // Lvl 7-8: long and intense
-  {distance:5000,startSpeed:422,endSpeed:464,gap:126,spacing:212,types:['spike','barrier','moving','laser','gauntlet'], coins:7, required:4,hint:'GAUNTLET MODE'},
-  {distance:5500,startSpeed:470,endSpeed:512,gap:112,spacing:185,types:['spike','barrier','moving','laser','gauntlet'], coins:7, required:4,hint:'MAXIMUM INTENSITY'},
-  // Lvl 9-10
-  {distance:6100,startSpeed:518,endSpeed:558,gap:98, spacing:162,types:['spike','barrier','moving','laser','gauntlet'], coins:8, required:5,hint:'DEEP PRESSURE'},
-  {distance:6600,startSpeed:564,endSpeed:604,gap:86, spacing:144,types:['spike','barrier','moving','laser','gauntlet'], coins:8, required:5,hint:'STORM INCOMING'},
-  // Lvl 11-12
-  {distance:7200,startSpeed:610,endSpeed:650,gap:75, spacing:128,types:['spike','barrier','moving','laser','gauntlet'], coins:9, required:6,hint:'FACTORY STORM'},
-  {distance:7800,startSpeed:656,endSpeed:698,gap:65, spacing:112,types:['spike','barrier','moving','laser','gauntlet'], coins:9, required:6,hint:'BEYOND LIMITS'},
+  // 1 — gentle intro: barriers only, very wide gaps, slow
+  {distance:1800,startSpeed:185,endSpeed:205,gap:230,spacing:545,
+   weights:{barrier:1.0},
+   coins:4,required:1,hint:'FLIP GRAVITY TO DODGE'},
+  // 2 — introduce moving obstacles (slow)
+  {distance:2200,startSpeed:215,endSpeed:238,gap:215,spacing:478,
+   weights:{barrier:0.65,moving:0.35},
+   coins:4,required:1,hint:'MOVING OBSTACLES!'},
+  // 3 — spikes enter the mix
+  {distance:2800,startSpeed:248,endSpeed:275,gap:198,spacing:410,
+   weights:{barrier:0.42,spike:0.36,moving:0.22},
+   coins:5,required:2,hint:'WATCH THE SPIKES'},
+  // 4 — patterns and timing, more spikes
+  {distance:3200,startSpeed:282,endSpeed:314,gap:180,spacing:350,
+   weights:{barrier:0.25,spike:0.45,moving:0.30},
+   coins:5,required:2,hint:'TIMING IS EVERYTHING'},
+  // 5 — lasers introduced gently (22% chance)
+  {distance:3800,startSpeed:322,endSpeed:360,gap:162,spacing:295,
+   weights:{barrier:0.20,spike:0.30,moving:0.28,laser:0.22},
+   coins:6,required:3,hint:'LASERS AHEAD!'},
+  // 6 — lasers more frequent, gaps tighten
+  {distance:4300,startSpeed:364,endSpeed:405,gap:145,spacing:258,
+   weights:{barrier:0.15,spike:0.25,moving:0.24,laser:0.36},
+   coins:6,required:3,hint:'HOLD YOUR NERVE'},
+  // 7 — gauntlet unlocked, world mechanic fully active
+  {distance:5000,startSpeed:410,endSpeed:453,gap:128,spacing:224,
+   weights:{barrier:0.10,spike:0.20,moving:0.20,laser:0.27,gauntlet:0.23},
+   coins:7,required:4,hint:'GAUNTLET MODE'},
+  // 8 — expert density begins
+  {distance:5500,startSpeed:458,endSpeed:500,gap:113,spacing:196,
+   weights:{barrier:0.08,spike:0.17,moving:0.17,laser:0.29,gauntlet:0.29},
+   coins:7,required:4,hint:'MAXIMUM INTENSITY'},
+  // 9
+  {distance:6100,startSpeed:505,endSpeed:548,gap:98,spacing:170,
+   weights:{barrier:0.07,spike:0.14,moving:0.15,laser:0.32,gauntlet:0.32},
+   coins:8,required:5,hint:'DEEP PRESSURE'},
+  // 10
+  {distance:6600,startSpeed:553,endSpeed:597,gap:86,spacing:150,
+   weights:{barrier:0.06,spike:0.12,moving:0.12,laser:0.35,gauntlet:0.35},
+   coins:8,required:5,hint:'STORM INCOMING'},
+  // 11
+  {distance:7200,startSpeed:602,endSpeed:646,gap:75,spacing:134,
+   weights:{barrier:0.05,spike:0.11,moving:0.11,laser:0.365,gauntlet:0.365},
+   coins:9,required:6,hint:'FACTORY STORM'},
+  // 12
+  {distance:7800,startSpeed:650,endSpeed:696,gap:65,spacing:118,
+   weights:{barrier:0.05,spike:0.10,moving:0.10,laser:0.375,gauntlet:0.375},
+   coins:9,required:6,hint:'BEYOND LIMITS'},
 ];
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
 
@@ -1301,7 +1332,17 @@ class GameScene extends Phaser.Scene{
   // ── Obstacle spawning ───────────────────────────────────────────────────────
   _w2s(wx){return PLAYER_X+(wx-this.distTraveled);}
   _spawnCluster(wx){
-    const types=this.lvl.types, pick=types[Math.floor(Math.random()*types.length)], sx=this._w2s(wx);
+    const lvl=this.lvl, sx=this._w2s(wx);
+    // Weighted type selection
+    let pick='barrier';
+    if(lvl.weights){
+      const entries=Object.entries(lvl.weights);
+      const total=entries.reduce((s,[,w])=>s+w,0);
+      let r=Math.random()*total;
+      for(const [type,w] of entries){r-=w;if(r<=0){pick=type;break;}}
+    } else if(lvl.types){
+      const t=lvl.types; pick=t[Math.floor(Math.random()*t.length)];
+    }
     if(pick==='barrier')this._doBarrier(sx,wx);
     else if(pick==='spike')this._doSpikes(sx,wx);
     else if(pick==='moving')this._doMoving(sx,wx);
@@ -1547,8 +1588,8 @@ class GameScene extends Phaser.Scene{
       const spawnWX=this.distTraveled+(W-PLAYER_X)+100;
       if(spawnWX>=this.nextObstacleWorldX&&this.nextObstacleWorldX<clearBefore){
         this._spawnCluster(this.nextObstacleWorldX);
-        const sp=isIntense?Math.floor(this.lvl.spacing*0.62):this.lvl.spacing;
-        this.nextObstacleWorldX+=Phaser.Math.Between(Math.floor(sp*0.85),Math.floor(sp*1.18));
+        const sp=isIntense?Math.floor(this.lvl.spacing*0.68):this.lvl.spacing;
+        this.nextObstacleWorldX+=Phaser.Math.Between(Math.floor(sp*0.75),Math.floor(sp*1.55));
       }
     }
 
