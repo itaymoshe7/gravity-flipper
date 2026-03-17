@@ -248,52 +248,52 @@ const CHARACTERS=[
 // Coins placed = required + 3 buffer.
 const LEVELS=[
   // 1 — gentle intro: barriers only, very wide gaps, slow
-  {distance:1800,startSpeed:185,endSpeed:205,gap:230,spacing:545,
+  {distance:1800,startSpeed:185,endSpeed:205,gap:230,spacing:545,minCount:2,
    weights:{barrier:1.0},
    coins:4,required:1,hint:'FLIP GRAVITY TO DODGE'},
   // 2 — introduce moving obstacles (slow)
-  {distance:2200,startSpeed:215,endSpeed:238,gap:215,spacing:478,
+  {distance:2200,startSpeed:215,endSpeed:238,gap:215,spacing:478,minCount:3,
    weights:{barrier:0.65,moving:0.35},
    coins:4,required:1,hint:'MOVING OBSTACLES!'},
   // 3 — spikes enter the mix
-  {distance:2800,startSpeed:248,endSpeed:275,gap:198,spacing:410,
+  {distance:2800,startSpeed:248,endSpeed:275,gap:198,spacing:410,minCount:4,
    weights:{barrier:0.42,spike:0.36,moving:0.22},
    coins:5,required:2,hint:'WATCH THE SPIKES'},
   // 4 — patterns and timing, more spikes
-  {distance:3200,startSpeed:282,endSpeed:314,gap:180,spacing:350,
+  {distance:3200,startSpeed:282,endSpeed:314,gap:180,spacing:350,minCount:5,
    weights:{barrier:0.25,spike:0.45,moving:0.30},
    coins:5,required:2,hint:'TIMING IS EVERYTHING'},
   // 5 — lasers introduced gently (22% chance)
-  {distance:3800,startSpeed:322,endSpeed:360,gap:162,spacing:295,
+  {distance:3800,startSpeed:322,endSpeed:360,gap:162,spacing:295,minCount:6,
    weights:{barrier:0.20,spike:0.30,moving:0.28,laser:0.22},
    coins:6,required:3,hint:'LASERS AHEAD!'},
-  // 6 — lasers more frequent, gaps tighten
-  {distance:4300,startSpeed:364,endSpeed:405,gap:145,spacing:258,
-   weights:{barrier:0.15,spike:0.25,moving:0.24,laser:0.36},
-   coins:6,required:3,hint:'HOLD YOUR NERVE'},
-  // 7 — gauntlet unlocked, world mechanic fully active
-  {distance:5000,startSpeed:410,endSpeed:453,gap:128,spacing:224,
-   weights:{barrier:0.10,spike:0.20,moving:0.20,laser:0.27,gauntlet:0.23},
+  // 6 — gravity gates debut + lasers more frequent
+  {distance:4300,startSpeed:364,endSpeed:405,gap:145,spacing:258,minCount:7,
+   weights:{barrier:0.12,spike:0.22,moving:0.22,laser:0.28,gravitygate:0.16},
+   coins:6,required:3,hint:'GRAVITY GATES ACTIVE'},
+  // 7 — gauntlet unlocked, gravity gates persist
+  {distance:5000,startSpeed:410,endSpeed:453,gap:128,spacing:224,minCount:8,
+   weights:{barrier:0.08,spike:0.18,moving:0.18,laser:0.24,gauntlet:0.18,gravitygate:0.14},
    coins:7,required:4,hint:'GAUNTLET MODE'},
   // 8 — expert density begins
-  {distance:5500,startSpeed:458,endSpeed:500,gap:113,spacing:196,
-   weights:{barrier:0.08,spike:0.17,moving:0.17,laser:0.29,gauntlet:0.29},
+  {distance:5500,startSpeed:458,endSpeed:500,gap:113,spacing:196,minCount:8,
+   weights:{barrier:0.06,spike:0.15,moving:0.15,laser:0.27,gauntlet:0.25,gravitygate:0.12},
    coins:7,required:4,hint:'MAXIMUM INTENSITY'},
   // 9
-  {distance:6100,startSpeed:505,endSpeed:548,gap:98,spacing:170,
-   weights:{barrier:0.07,spike:0.14,moving:0.15,laser:0.32,gauntlet:0.32},
+  {distance:6100,startSpeed:505,endSpeed:548,gap:98,spacing:170,minCount:8,
+   weights:{barrier:0.06,spike:0.13,moving:0.13,laser:0.30,gauntlet:0.28,gravitygate:0.10},
    coins:8,required:5,hint:'DEEP PRESSURE'},
   // 10
-  {distance:6600,startSpeed:553,endSpeed:597,gap:86,spacing:150,
-   weights:{barrier:0.06,spike:0.12,moving:0.12,laser:0.35,gauntlet:0.35},
+  {distance:6600,startSpeed:553,endSpeed:597,gap:86,spacing:150,minCount:8,
+   weights:{barrier:0.05,spike:0.11,moving:0.11,laser:0.33,gauntlet:0.31,gravitygate:0.09},
    coins:8,required:5,hint:'STORM INCOMING'},
   // 11
-  {distance:7200,startSpeed:602,endSpeed:646,gap:75,spacing:134,
-   weights:{barrier:0.05,spike:0.11,moving:0.11,laser:0.365,gauntlet:0.365},
+  {distance:7200,startSpeed:602,endSpeed:646,gap:75,spacing:134,minCount:8,
+   weights:{barrier:0.04,spike:0.10,moving:0.10,laser:0.355,gauntlet:0.335,gravitygate:0.07},
    coins:9,required:6,hint:'FACTORY STORM'},
   // 12
-  {distance:7800,startSpeed:650,endSpeed:696,gap:65,spacing:118,
-   weights:{barrier:0.05,spike:0.10,moving:0.10,laser:0.375,gauntlet:0.375},
+  {distance:7800,startSpeed:650,endSpeed:696,gap:65,spacing:118,minCount:8,
+   weights:{barrier:0.04,spike:0.09,moving:0.09,laser:0.365,gauntlet:0.345,gravitygate:0.06},
    coins:9,required:6,hint:'BEYOND LIMITS'},
 ];
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
@@ -435,6 +435,29 @@ class AudioMgr{
     o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.12);
   }
 
+  laserCharge(){
+    if(!this.ctx||this.muted)return;this.resume();
+    const t=this.ctx.currentTime;
+    // Rising whine: sine sweep 300→1400Hz over 0.48s
+    const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type='sine';o.frequency.setValueAtTime(300,t);o.frequency.exponentialRampToValueAtTime(1400,t+0.46);
+    g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.18,t+0.22);g.gain.exponentialRampToValueAtTime(0.0001,t+0.48);
+    o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.50);
+    // Sub buzz underneath
+    this._osc(this.sfxBus,60,'sawtooth',0.06,t,0.45);
+  }
+  gravGate(){
+    if(!this.ctx||this.muted)return;this.resume();
+    const t=this.ctx.currentTime;
+    // Descending sci-fi zap: square drop 900→220 in 0.12s
+    const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type='square';o.frequency.setValueAtTime(900,t);o.frequency.exponentialRampToValueAtTime(220,t+0.12);
+    g.gain.setValueAtTime(0.35,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.14);
+    o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.15);
+    // Bright ping on top
+    this._osc(this.sfxBus,1047,'triangle',0.22,t,0.08);
+    this._osc(this.sfxBus,1568,'triangle',0.14,t+0.06,0.12);
+  }
   startMusic(){}
   stopMusic(){}
   pauseMusic(){if(this.ctx&&this.ctx.state==='running')this.ctx.suspend();}
@@ -789,7 +812,7 @@ class GameScene extends Phaser.Scene{
     this._nearMissObstacles=new Set(); this._closeCallCooldown=0;
     this._inputBuf=0; this._ambientT=0; this._shockwave=null;
     this._challengeBeat=false;
-    this.laserList=[];
+    this.laserList=[]; this.gateList=[]; this._spawnCount=0;
     this._levelPowerup=Math.random()<0.5?'shield':'magnet';
     this.hasShield=false; this.magnetTimer=0; this.powerupType=null; this.powerupMax=0;
     this._prevMagnetActive=false; this._prevShieldActive=false;
@@ -1333,6 +1356,7 @@ class GameScene extends Phaser.Scene{
   _w2s(wx){return PLAYER_X+(wx-this.distTraveled);}
   _spawnCluster(wx){
     const lvl=this.lvl, sx=this._w2s(wx);
+    this._spawnCount++;
     // Weighted type selection
     let pick='barrier';
     if(lvl.weights){
@@ -1347,6 +1371,7 @@ class GameScene extends Phaser.Scene{
     else if(pick==='spike')this._doSpikes(sx,wx);
     else if(pick==='moving')this._doMoving(sx,wx);
     else if(pick==='laser')this._doLaser(sx,wx);
+    else if(pick==='gravitygate')this._doGravityGate(sx,wx);
     else if(pick==='gauntlet'){this._doSpikes(sx,wx);this._doBarrier(sx+90,wx+90);}
   }
 
@@ -1393,15 +1418,13 @@ class GameScene extends Phaser.Scene{
   }
 
   _doLaser(sx,wx){
-    const d=this.levelIndex/7;
-    const isCyber=this.theme.style==='cyber';
-    const isFactory=this.theme.style==='factory';
+    const d=this.levelIndex/11;
     const gfx=this.add.graphics().setDepth(7);
+    const warnDur=0.5, onDur=0.5, offDur=lerp(1.4,0.5,d);
+    const totalPeriod=warnDur+onDur+offDur;
     this.laserList.push({
-      gfx,x:sx,
-      period:isCyber?lerp(0.7,0.4,d):isFactory?0.5:lerp(2.4,1.3,d),
-      phase:Math.random(),
-      onRatio:isCyber?lerp(0.55,0.72,d):isFactory?0.5:lerp(0.35,0.55,d),
+      gfx,x:sx,warnDur,onDur,offDur,totalPeriod,
+      t:Math.random()*totalPeriod,_lastPhase:'off',
     });
     this._placeCoin(sx-80,H/2,wx-80);
   }
@@ -1562,11 +1585,37 @@ class GameScene extends Phaser.Scene{
     for(let i=this.laserList.length-1;i>=0;i--){
       const laser=this.laserList[i];
       laser.x-=this.speed*dt;
+      laser.t+=dt;
       if(laser.x<-40){laser.gfx.destroy();this.laserList.splice(i,1);continue;}
-      const phase=((time/1000)/laser.period+laser.phase)%1;
-      laser.isOn=phase<laser.onRatio;
-      this._drawLaser(laser,phase);
-      if(laser.isOn&&Math.abs(this.player.x-laser.x)<10){this._die();return;}
+      const cycle=laser.t%laser.totalPeriod;
+      const phaseStr=cycle<laser.warnDur?'warn':cycle<laser.warnDur+laser.onDur?'on':'off';
+      // Play charge sound when transitioning OFF → WARN
+      if(phaseStr==='warn'&&laser._lastPhase==='off') AUDIO.laserCharge();
+      laser._lastPhase=phaseStr;
+      this._drawLaser(laser,phaseStr);
+      if(phaseStr==='on'&&Math.abs(this.player.x-laser.x)<10){this._die();return;}
+    }
+
+    for(let i=this.gateList.length-1;i>=0;i--){
+      const gate=this.gateList[i];
+      gate.x-=this.speed*dt;
+      if(gate.x<-50){gate.gfx.destroy();this.gateList.splice(i,1);continue;}
+      // Ripple animation update
+      if(gate.rippleR!==undefined){
+        gate.rippleR+=210*dt;
+        gate.rippleA=Math.max(0,1-gate.rippleR/72);
+      }
+      this._drawGate(gate,time);
+      // Trigger: player crosses gate x-position (only once)
+      if(!gate.triggered&&this.player.x>=gate.x-6&&this.player.x<=gate.x+10){
+        gate.triggered=true; gate.rippleR=4; gate.rippleA=1.0;
+        // Force gravity flip
+        this.gravDir*=-1;
+        this.vy=lerp(this.vy,this.gravDir*-FLIP_KICK,0.52);
+        this.cameras.main.flash(60,0,255,120,false);
+        this._floatText(gate.x,this.player.y-28,'\u26a1 GRAVITY FLIP!','#00ff88');
+        AUDIO.gravGate();
+      }
     }
 
     // Magnet: pull nearby coins toward player
@@ -1586,6 +1635,13 @@ class GameScene extends Phaser.Scene{
     const clearBefore=this.lvl.distance-450;
     if(this.distTraveled+400<clearBefore){
       const spawnWX=this.distTraveled+(W-PLAYER_X)+100;
+      // Enforce minimum obstacle count: if approaching the end under-count, close the gap
+      const minCount=this.lvl.minCount||0;
+      if(this._spawnCount<minCount&&this.nextObstacleWorldX>spawnWX+260){
+        const needed=minCount-this._spawnCount;
+        const remaining=clearBefore-spawnWX;
+        if(remaining<needed*340) this.nextObstacleWorldX=Math.min(this.nextObstacleWorldX,spawnWX+220);
+      }
       if(spawnWX>=this.nextObstacleWorldX&&this.nextObstacleWorldX<clearBefore){
         this._spawnCluster(this.nextObstacleWorldX);
         const sp=isIntense?Math.floor(this.lvl.spacing*0.68):this.lvl.spacing;
@@ -1700,24 +1756,58 @@ class GameScene extends Phaser.Scene{
     this._updateFinishLine();
   }
 
-  _drawLaser(laser,phase){
+  _drawLaser(laser,phaseStr){
     const g=laser.gfx,lc=this.theme.laserCol; g.clear();
     if(laser.x<-20||laser.x>W+20)return;
-    if(laser.isOn){
+    if(phaseStr==='on'){
+      // Deadly phase: thick bright beam
       g.lineStyle(6,lc,1);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
-      g.lineStyle(20,lc,0.28);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
-      g.lineStyle(2,0xffffff,0.7);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      g.lineStyle(22,lc,0.30);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      g.lineStyle(2,0xffffff,0.8);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
       g.fillStyle(lc,1);g.fillCircle(laser.x,TUNNEL_TOP,7);g.fillCircle(laser.x,TUNNEL_BOTTOM,7);
-    } else {
-      const offPhase=(phase-laser.onRatio)/(1-laser.onRatio);
-      if(offPhase>0.65){
-        const flash=0.25+0.5*Math.sin(offPhase*30);
-        g.lineStyle(2,lc,flash);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
-        g.fillStyle(lc,flash);g.fillCircle(laser.x,TUNNEL_TOP,5);g.fillCircle(laser.x,TUNNEL_BOTTOM,5);
-      } else {
-        g.fillStyle(lc,0.35);g.fillCircle(laser.x,TUNNEL_TOP,5);g.fillCircle(laser.x,TUNNEL_BOTTOM,5);
-        g.lineStyle(1,lc,0.25);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP+8);g.lineTo(laser.x,TUNNEL_BOTTOM-8);g.strokePath();
-      }
+    } else if(phaseStr==='warn'){
+      // Warning phase: thin pulsing orange-red line — NOT deadly
+      const warnPct=Math.min(1,(laser.t%laser.totalPeriod)/laser.warnDur);
+      const pulse=0.4+0.4*Math.sin(warnPct*Math.PI*6);
+      g.lineStyle(2,0xff4400,pulse);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      g.lineStyle(8,0xff2200,pulse*0.18);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      g.fillStyle(0xff4400,pulse);g.fillCircle(laser.x,TUNNEL_TOP,4);g.fillCircle(laser.x,TUNNEL_BOTTOM,4);
+      // "!" warning text indicator above the beam end
+      g.fillStyle(0xff4400,pulse*0.7);g.fillRect(laser.x-2,TUNNEL_TOP-14,4,10);g.fillRect(laser.x-2,TUNNEL_TOP-2,4,4);
+    }
+    // off phase: draw nothing
+  }
+
+  _doGravityGate(sx,wx){
+    const gfx=this.add.graphics().setDepth(7);
+    this.gateList.push({gfx,x:sx,triggered:false,rippleR:undefined,rippleA:0});
+    // Coin placed AFTER the gate so player has space to recover first
+    this._placeCoin(sx+130,H/2,wx+130);
+  }
+
+  _drawGate(gate,time){
+    const g=gate.gfx; g.clear();
+    if(gate.x<-20||gate.x>W+20)return;
+    if(!gate.triggered){
+      // Animated vertical line: green→yellow gradient shimmer
+      const pulse=0.55+0.35*Math.sin(time*0.006);
+      g.lineStyle(3,0x00ff88,pulse);
+      g.beginPath();g.moveTo(gate.x,TUNNEL_TOP);g.lineTo(gate.x,TUNNEL_BOTTOM);g.strokePath();
+      g.lineStyle(14,0x00ff44,pulse*0.15);
+      g.beginPath();g.moveTo(gate.x,TUNNEL_TOP);g.lineTo(gate.x,TUNNEL_BOTTOM);g.strokePath();
+      // Chevron arrows pointing inward — indicates flip incoming
+      const ay=H/2, aw=10, ah=14;
+      g.fillStyle(0x00ffaa,pulse*0.9);
+      g.fillTriangle(gate.x-aw,ay-ah,gate.x,ay,gate.x-aw,ay+ah);
+      g.fillTriangle(gate.x+aw,ay-ah,gate.x,ay,gate.x+aw,ay+ah);
+      // End caps
+      g.fillStyle(0x00ff88,pulse);g.fillCircle(gate.x,TUNNEL_TOP,5);g.fillCircle(gate.x,TUNNEL_BOTTOM,5);
+    } else if(gate.rippleA>0){
+      // Ripple ring after trigger
+      g.lineStyle(3,0x00ff88,gate.rippleA);
+      g.strokeCircle(gate.x,H/2,gate.rippleR);
+      g.lineStyle(10,0x00ff44,gate.rippleA*0.20);
+      g.strokeCircle(gate.x,H/2,gate.rippleR);
     }
   }
 
@@ -1823,6 +1913,8 @@ class GameScene extends Phaser.Scene{
     this.levelDone=true;this.alive=false;
     this.cameras.main.setAngle(0);
     this.cloudList.forEach(cl=>{try{cl.gfx.destroy();}catch(e){}});this.cloudList=[];
+    this.gateList.forEach(gl=>{try{gl.gfx.destroy();}catch(e){}});this.gateList=[];
+    this.laserList.forEach(ll=>{try{ll.gfx.destroy();}catch(e){}});this.laserList=[];
     const passed=this.coinsCollected>=this.lvl.required;
     this._checkDailyChallenges(this.coinsCollected,this._levelFlips,passed);
     if(passed){
@@ -1867,6 +1959,8 @@ class GameScene extends Phaser.Scene{
     this.player.setVisible(false);this.trail.forEach(t=>t.setVisible(false));
     this.fireballs.forEach(fb=>{try{fb.destroy();}catch(e){}});this.fireballs=[];
     this.cloudList.forEach(cl=>{try{cl.gfx.destroy();}catch(e){}});this.cloudList=[];
+    this.gateList.forEach(gl=>{try{gl.gfx.destroy();}catch(e){}});this.gateList=[];
+    this.laserList.forEach(ll=>{try{ll.gfx.destroy();}catch(e){}});this.laserList=[];
     this.cameras.main.setAngle(0);
     const fs=this.totalScore+this.levelScore;
     const best=parseInt(localStorage.getItem('gf_best')||'0');
