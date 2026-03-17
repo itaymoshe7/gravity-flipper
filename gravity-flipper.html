@@ -435,6 +435,20 @@ class AudioMgr{
     o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.12);
   }
 
+  slowmoGet(){
+    if(!this.ctx||this.muted)return;this.resume();
+    const t=this.ctx.currentTime;
+    const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type='sine';o.frequency.setValueAtTime(880,t);o.frequency.exponentialRampToValueAtTime(440,t+0.35);
+    g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.26,t+0.12);g.gain.exponentialRampToValueAtTime(0.0001,t+0.42);
+    o.connect(g);g.connect(this.sfxBus);o.start(t);o.stop(t+0.44);
+    this._osc(this.sfxBus,660,'triangle',0.14,t+0.14,0.28);
+  }
+  doubleCoinsGet(){
+    if(!this.ctx||this.muted)return;this.resume();
+    const t=this.ctx.currentTime;
+    [523,659,784,1047,1319].forEach((f,i)=>this._osc(this.sfxBus,f,'triangle',0.22,t+i*0.07,0.13));
+  }
   laserCharge(){
     if(!this.ctx||this.muted)return;this.resume();
     const t=this.ctx.currentTime;
@@ -643,6 +657,21 @@ class BootScene extends Phaser.Scene{
     g.fillStyle(0xffffff);g.fillRect(8,3,2,7);g.fillRect(5,3,8,2);
     g.generateTexture('powerup_magnet',18,18);
 
+    // ─ Slow-mo power-up (icy blue) ─
+    g.clear();
+    g.fillStyle(0x44ccff);g.fillCircle(9,9,9);g.fillStyle(0xaaeeff);g.fillCircle(9,9,5);
+    g.fillStyle(0x001a44);g.fillRect(8,3,2,12);g.fillRect(3,8,12,2);
+    g.fillStyle(0xffffff);g.fillRect(8,8,2,2);
+    g.generateTexture('powerup_slowmo',18,18);
+
+    // ─ Double Coins power-up (purple stacked coins) ─
+    g.clear();
+    g.fillStyle(0x6600aa);g.fillCircle(11,11,7);
+    g.fillStyle(0xaa44ff);g.fillCircle(7,7,7);
+    g.fillStyle(0xddaaff);g.fillCircle(7,7,3);
+    g.fillStyle(0xffffff);g.fillRect(6,6,2,2);
+    g.generateTexture('powerup_doublecoins',18,18);
+
     // ─ Particle / Star ─
     g.clear();g.fillStyle(0xffffff);g.fillRect(0,0,4,4);g.generateTexture('particle',4,4);
     g.clear();g.fillStyle(0xffffff);g.fillRect(0,0,2,2);g.generateTexture('star',2,2);
@@ -813,9 +842,7 @@ class GameScene extends Phaser.Scene{
     this._inputBuf=0; this._ambientT=0; this._shockwave=null;
     this._challengeBeat=false;
     this.laserList=[]; this.gateList=[]; this._spawnCount=0;
-    this._levelPowerup=Math.random()<0.5?'shield':'magnet';
-    this.hasShield=false; this.magnetTimer=0; this.powerupType=null; this.powerupMax=0;
-    this._prevMagnetActive=false; this._prevShieldActive=false;
+    this._powerup=null; // {type,timer,duration} or null
     this._levelFlips=0; this._rareCoins=0;
     this.fireballs=[]; this._fireballTimer=2.0;
     this._currentTimer=2.5; this._currentDuration=0; this._currentBoost=0;
@@ -1431,15 +1458,23 @@ class GameScene extends Phaser.Scene{
 
   _placeCoin(sx,sy,wx){
     sy=clamp(sy,TUNNEL_TOP+22,TUNNEL_BOTTOM-22);
+    // Skip if overlapping a solid obstacle
     for(const obs of this.obstacles.getChildren()){
       if(Math.abs(obs.x-sx)<obs.displayWidth/2+18&&Math.abs(obs.y-sy)<obs.displayHeight/2+18)return;
     }
+    // Skip if too close to a laser beam (would block collection path)
+    for(const laser of this.laserList){if(Math.abs(laser.x-sx)<52)return;}
+    // Skip if too close to a gravity gate
+    for(const gate of this.gateList){if(Math.abs(gate.x-sx)<28)return;}
     // Determine pickup type
     const r=Math.random();
     let tex='coin',isRare=false,isPowerup=false,powerupType=null;
-    if(r<0.055&&!this.hasShield&&this.magnetTimer<=0){
-      isPowerup=true; powerupType=this._levelPowerup;
-      tex=powerupType==='shield'?'powerup_shield':'powerup_magnet';
+    if(r<0.065&&!this._powerup){
+      isPowerup=true;
+      const types=['shield','magnet','slowmo','doublecoins'];
+      powerupType=types[Math.floor(Math.random()*types.length)];
+      const texMap={shield:'powerup_shield',magnet:'powerup_magnet',slowmo:'powerup_slowmo',doublecoins:'powerup_doublecoins'};
+      tex=texMap[powerupType];
     } else if(r<0.18){
       isRare=true; tex='coin_rare';
     }
@@ -1498,6 +1533,7 @@ class GameScene extends Phaser.Scene{
     const isIntense=prog>0.70;
     const baseSpeed=lerp(this.lvl.startSpeed*0.88,this.lvl.endSpeed,prog);
     this.speed=baseSpeed*(isIntense?1+(prog-0.70)*0.65:1);
+    if(this._powerup?.type==='slowmo') this.speed*=0.70;
     this.distTraveled+=this.speed*dt;
     this.levelScore=Math.floor(this.distTraveled/8);
     const currentScore=this.totalScore+this.levelScore;
@@ -1594,6 +1630,14 @@ class GameScene extends Phaser.Scene{
       laser._lastPhase=phaseStr;
       this._drawLaser(laser,phaseStr);
       if(phaseStr==='on'&&Math.abs(this.player.x-laser.x)<10){this._die();return;}
+      // Spark particles along beam
+      if(laser.x>0&&laser.x<W){
+        const rate=phaseStr==='on'?22:phaseStr==='warn'?7:0;
+        if(rate>0&&Math.random()<dt*rate){
+          const p=this._poolParticle();
+          if(p){p.setActive(true).setVisible(true);p.x=laser.x+(Math.random()-0.5)*8;p.y=Phaser.Math.Between(TUNNEL_TOP+4,TUNNEL_BOTTOM-4);p.vx=(Math.random()-0.5)*150;p.vy=(Math.random()-0.5)*90;p.life=phaseStr==='on'?0.28:0.45;p.setTint(phaseStr==='on'?0xffffff:0xff4400);p.setScale(1);}
+        }
+      }
     }
 
     for(let i=this.gateList.length-1;i>=0;i--){
@@ -1618,12 +1662,24 @@ class GameScene extends Phaser.Scene{
       }
     }
 
+    // Power-up timer countdown
+    if(this._powerup&&this._powerup.timer!==undefined){
+      this._powerup.timer=Math.max(0,this._powerup.timer-dt);
+      if(this._powerup.timer<=0){
+        const expiredType=this._powerup.type;
+        this._powerup=null;
+        this.cameras.main.clearTint();
+        const expiredLabels={shield:'SHIELD GONE',magnet:'MAGNET OFF',slowmo:'SLOW-MO ENDED',doublecoins:'2X ENDED'};
+        this._floatText(80,55,expiredLabels[expiredType]||'POWER-UP ENDED','#888888');
+      }
+    }
+    // Slowmo: blue screen tint
+    if(this._powerup?.type==='slowmo') this.cameras.main.setTint(0xaaddff);
     // Magnet: pull nearby coins toward player
-    if(this.magnetTimer>0){
-      this.magnetTimer=Math.max(0,this.magnetTimer-dt);
+    if(this._powerup?.type==='magnet'){
       for(const c of this.coins.getChildren()){
         const dx=this.player.x-c.x,dy=this.player.y-c.y,dist=Math.sqrt(dx*dx+dy*dy);
-        if(dist<160&&dist>1){const f=Math.min(300,9000/dist);c.x+=dx/dist*f*dt;c.y+=dy/dist*f*dt;}
+        if(dist<180&&dist>1){const f=Math.min(320,9500/dist);c.x+=dx/dist*f*dt;c.y+=dy/dist*f*dt;}
       }
     }
     for(const c of this.coins.getChildren().slice()){
@@ -1704,32 +1760,41 @@ class GameScene extends Phaser.Scene{
       }
     }
 
-    // Shield aura
+    // Active power-up aura around player
     this.shieldAura.clear();
-    if(this.hasShield){
+    const pu=this._powerup;
+    if(pu?.type==='shield'){
       const a=0.55+Math.sin(time*0.009)*0.3;
       this.shieldAura.lineStyle(4,0x00ff88,a);this.shieldAura.strokeCircle(this.player.x,this.player.y,30);
-      this.shieldAura.lineStyle(8,0x00ff88,a*0.22);this.shieldAura.strokeCircle(this.player.x,this.player.y,35);
+      this.shieldAura.lineStyle(10,0x00ff88,a*0.20);this.shieldAura.strokeCircle(this.player.x,this.player.y,36);
+    } else if(pu?.type==='magnet'){
+      const a=0.30+Math.sin(time*0.012)*0.18;
+      this.shieldAura.lineStyle(2,0xffdd00,a);this.shieldAura.strokeCircle(this.player.x,this.player.y,40+Math.sin(time*0.008)*5);
+      this.shieldAura.lineStyle(2,0xffaa00,a*0.55);this.shieldAura.strokeCircle(this.player.x,this.player.y,60+Math.sin(time*0.012)*7);
+    } else if(pu?.type==='slowmo'){
+      const a=0.22+Math.sin(time*0.006)*0.14;
+      this.shieldAura.lineStyle(3,0x88ddff,a);this.shieldAura.strokeCircle(this.player.x,this.player.y,32+Math.sin(time*0.005)*5);
+    } else if(pu?.type==='doublecoins'){
+      const a=0.28+Math.sin(time*0.010)*0.18;
+      this.shieldAura.lineStyle(3,0xaa44ff,a);this.shieldAura.strokeCircle(this.player.x,this.player.y,28+Math.sin(time*0.009)*4);
     }
-    // Power-up bar
+    // Power-up HUD bar
     this.powerupGfx.clear();
-    const magnetActive=this.magnetTimer>0,shieldActive=this.hasShield;
-    if(this._prevMagnetActive&&!magnetActive)this._floatText(80,55,'MAGNET OFF','#00aacc');
-    if(this._prevShieldActive&&!shieldActive)this._floatText(80,55,'SHIELD GONE','#ff4444');
-    this._prevMagnetActive=magnetActive;this._prevShieldActive=shieldActive;
-    if(this.powerupType==='magnet'&&magnetActive){
-      this.powerupTxt.setText('\u2726 MAGNET');
-      const pct=this.magnetTimer/this.powerupMax;
-      const warn=this.magnetTimer<3;
-      const flash=warn?0.55+0.45*Math.sin(time*0.018):0.9;
-      this.powerupGfx.fillStyle(0x004466,0.7);this.powerupGfx.fillRect(10,50,80,7);
-      this.powerupGfx.fillStyle(warn?0xffff00:0x00ffff,flash);this.powerupGfx.fillRect(10,50,80*pct,7);
-    } else if(this.powerupType==='shield'&&shieldActive){
-      this.powerupTxt.setText('\u25c9 SHIELD');
-      this.powerupGfx.fillStyle(0x00ff88,0.7);this.powerupGfx.fillRect(10,50,80,7);
+    if(pu){
+      const cfg={
+        shield:    {icon:'\u25c9 SHIELD',   bg:0x003322,bar:0x00ff88,warn:0xffff44},
+        magnet:    {icon:'\u2726 MAGNET',   bg:0x332200,bar:0xffdd00,warn:0xffffff},
+        slowmo:    {icon:'\u29d7 SLOW-MO',  bg:0x001a33,bar:0x44ccff,warn:0xffffff},
+        doublecoins:{icon:'2\u00d7 COINS',  bg:0x1a0033,bar:0xaa44ff,warn:0xff88ff},
+      }[pu.type]||{icon:'',bg:0x111111,bar:0xffffff,warn:0xffffff};
+      this.powerupTxt.setText(cfg.icon);
+      const pct=pu.type==='shield'?(pu.timer/pu.duration):clamp(pu.timer/pu.duration,0,1);
+      const warn=pu.type!=='shield'&&pu.timer<2;
+      const flash=warn?0.55+0.45*Math.sin(time*0.020):0.9;
+      this.powerupGfx.fillStyle(cfg.bg,0.80);this.powerupGfx.fillRect(10,50,80,7);
+      this.powerupGfx.fillStyle(warn?cfg.warn:cfg.bar,flash);this.powerupGfx.fillRect(10,50,Math.max(1,80*pct),7);
     } else {
       this.powerupTxt.setText('');
-      if(!shieldActive&&!magnetActive)this.powerupType=null;
     }
     // Sky clouds: spawn + scroll semi-opaque cloud rectangles
     if(style==='sky'&&this.gameStarted){
@@ -1757,25 +1822,37 @@ class GameScene extends Phaser.Scene{
   }
 
   _drawLaser(laser,phaseStr){
-    const g=laser.gfx,lc=this.theme.laserCol; g.clear();
+    const g=laser.gfx; g.clear();
     if(laser.x<-20||laser.x>W+20)return;
     if(phaseStr==='on'){
-      // Deadly phase: thick bright beam
-      g.lineStyle(6,lc,1);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
-      g.lineStyle(22,lc,0.30);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
-      g.lineStyle(2,0xffffff,0.8);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
-      g.fillStyle(lc,1);g.fillCircle(laser.x,TUNNEL_TOP,7);g.fillCircle(laser.x,TUNNEL_BOTTOM,7);
+      // Deadly phase: hot red-orange beam with electric glow
+      const t2=laser.t;
+      const flicker=0.85+0.15*Math.sin(t2*47);  // fast flicker
+      // Outer electric glow (wide, semi-transparent)
+      g.lineStyle(28,0xff2200,0.12*flicker);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      g.lineStyle(14,0xff4400,0.28*flicker);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      // Core beam
+      g.lineStyle(5,0xff2200,flicker);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      // Bright white-hot center
+      g.lineStyle(2,0xffffff,0.9*flicker);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      // End caps
+      g.fillStyle(0xff2200,flicker);g.fillCircle(laser.x,TUNNEL_TOP,8);g.fillCircle(laser.x,TUNNEL_BOTTOM,8);
+      g.fillStyle(0xffffff,0.9);g.fillCircle(laser.x,TUNNEL_TOP,4);g.fillCircle(laser.x,TUNNEL_BOTTOM,4);
     } else if(phaseStr==='warn'){
-      // Warning phase: thin pulsing orange-red line — NOT deadly
+      // Warning phase: thin pulsing orange line — visible but NOT deadly
       const warnPct=Math.min(1,(laser.t%laser.totalPeriod)/laser.warnDur);
-      const pulse=0.4+0.4*Math.sin(warnPct*Math.PI*6);
-      g.lineStyle(2,0xff4400,pulse);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
-      g.lineStyle(8,0xff2200,pulse*0.18);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
-      g.fillStyle(0xff4400,pulse);g.fillCircle(laser.x,TUNNEL_TOP,4);g.fillCircle(laser.x,TUNNEL_BOTTOM,4);
-      // "!" warning text indicator above the beam end
-      g.fillStyle(0xff4400,pulse*0.7);g.fillRect(laser.x-2,TUNNEL_TOP-14,4,10);g.fillRect(laser.x-2,TUNNEL_TOP-2,4,4);
+      const pulse=0.35+0.45*Math.sin(warnPct*Math.PI*7);
+      // Thin warning line
+      g.lineStyle(2,0xff6600,pulse);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      // Soft glow
+      g.lineStyle(10,0xff4400,pulse*0.14);g.beginPath();g.moveTo(laser.x,TUNNEL_TOP);g.lineTo(laser.x,TUNNEL_BOTTOM);g.strokePath();
+      // End dots
+      g.fillStyle(0xff6600,pulse);g.fillCircle(laser.x,TUNNEL_TOP,4);g.fillCircle(laser.x,TUNNEL_BOTTOM,4);
+      // Warning "!" pip above beam
+      g.fillStyle(0xff6600,pulse*0.75);
+      g.fillRect(laser.x-2,TUNNEL_TOP-15,4,10);g.fillRect(laser.x-2,TUNNEL_TOP-2,4,4);
     }
-    // off phase: draw nothing
+    // off phase: invisible
   }
 
   _doGravityGate(sx,wx){
@@ -1818,15 +1895,19 @@ class GameScene extends Phaser.Scene{
       this._emitParticles(c.x,c.y,[0x00ff88,0x88ffcc,0xffffff],14,80,170);
       this.coins.remove(c,true,true); return;
     }
-    const pts=c.isRare?500:100;
-    this.coinsCollected++; this.levelScore+=pts;
+    const double=this._powerup?.type==='doublecoins';
+    const basePts=c.isRare?500:100;
+    const pts=double?basePts*2:basePts;
+    const inc=double?2:1;
+    this.coinsCollected+=inc; this.levelScore+=pts;
     if(c.isRare)this._rareCoins++;
     const req=this.lvl.required,met=this.coinsCollected>=req;
-    this.coinTxt.setText(`\u25c6 ${this.coinsCollected}/${req}`).setColor(met?'#00ff88':'#ffdd00');
-    this._emitParticles(c.x,c.y,c.isRare?[0x9933ff,0xcc88ff,0xffffff]:[0xffdd00,0xffee66,0xffffff],c.isRare?24:14,80,170);
+    this.coinTxt.setText(`\u25c6 ${this.coinsCollected}/${req}`).setColor(met?'#00ff88':double?'#cc88ff':'#ffdd00');
+    const pColor=double?[0xaa44ff,0xdd88ff,0xffffff]:c.isRare?[0x9933ff,0xcc88ff,0xffffff]:[0xffdd00,0xffee66,0xffffff];
+    this._emitParticles(c.x,c.y,pColor,c.isRare||double?24:14,80,170);
     this.tweens.add({targets:this.coinTxt,scaleX:1.7,scaleY:1.7,duration:90,yoyo:true,ease:'Back.easeOut'});
-    if(met&&this.coinsCollected===req){this.cameras.main.flash(120,0,255,100,false);this.unlockedMsg.setAlpha(1);}
-    this._floatText(c.x,c.y-20,c.isRare?'+5':'+1',c.isRare?'#cc88ff':'#ffdd00');
+    if(met&&this.coinsCollected-inc<req){this.cameras.main.flash(120,0,255,100,false);this.unlockedMsg.setAlpha(1);}
+    this._floatText(c.x,c.y-20,c.isRare?'+5':double?'+2':'+1',c.isRare?'#cc88ff':double?'#aa44ff':'#ffdd00');
     if(c.isRare)AUDIO.coinRare();else AUDIO.coin();
     this.coins.remove(c,true,true);
   }
@@ -1870,14 +1951,12 @@ class GameScene extends Phaser.Scene{
   }
 
   _activatePowerup(type){
-    this.powerupType=type;
-    if(type==='shield'){
-      this.hasShield=true; this.powerupMax=1;
-      AUDIO.shieldGet();
-    } else {
-      this.magnetTimer=5; this.powerupMax=5;
-      AUDIO.magnetGet();
-    }
+    const dur={shield:15,magnet:6,slowmo:5,doublecoins:8}[type]||5;
+    this._powerup={type,timer:dur,duration:dur};
+    if(type==='shield')AUDIO.shieldGet();
+    else if(type==='magnet')AUDIO.magnetGet();
+    else if(type==='slowmo')AUDIO.slowmoGet();
+    else if(type==='doublecoins')AUDIO.doubleCoinsGet();
   }
 
   _updateHUD(prog){
@@ -1919,8 +1998,20 @@ class GameScene extends Phaser.Scene{
     this._checkDailyChallenges(this.coinsCollected,this._levelFlips,passed);
     if(passed){
       AUDIO.complete();
-      this.cameras.main.flash(300,50,255,100,false);
-      for(let i=0;i<8;i++) this.time.delayedCall(i*90,()=>this._emitParticles(Phaser.Math.Between(40,W-40),Phaser.Math.Between(TUNNEL_TOP+20,TUNNEL_BOTTOM-20),[0xffdd00,0x00ffcc,0xff44ff,0xffffff,0x00ffff],20,100,260));
+      // ── TURBO FINISH ──────────────────────────────────────────────
+      this.cameras.main.flash(220,255,255,180,false);
+      this.cameras.main.shake(380,0.022);
+      // Brief zoom-out then snap back
+      this.tweens.add({targets:this.cameras.main,zoom:0.88,duration:280,ease:'Power2',yoyo:true,hold:100});
+      // Speed burst trail: rapid particle jets from player position
+      const themeColors=[this.theme.wallLine,this.theme.wallGlow||0xffffff,0xffffff];
+      for(let i=0;i<8;i++){
+        this.time.delayedCall(i*55,()=>{
+          this._emitParticles(this.player.x,this.player.y,themeColors,18,140,340);
+        });
+      }
+      // Scattered explosions across the tunnel
+      for(let i=0;i<6;i++) this.time.delayedCall(i*110,()=>this._emitParticles(Phaser.Math.Between(40,W-40),Phaser.Math.Between(TUNNEL_TOP+20,TUNNEL_BOTTOM-20),[0xffdd00,0x00ffcc,0xff44ff,0xffffff,0x00ffff],20,100,260));
       const fs=this.totalScore+this.levelScore;
       const best=parseInt(localStorage.getItem('gf_best')||'0');
       if(fs>best)localStorage.setItem('gf_best',fs);
@@ -1937,12 +2028,14 @@ class GameScene extends Phaser.Scene{
 
   _die(){
     if(!this.alive)return;
-    if(this.hasShield){
-      this.hasShield=false; this.powerupType=null;
+    if(this._powerup?.type==='shield'){
+      this._powerup=null;
       AUDIO.shieldHit();
-      this.cameras.main.shake(200,0.015);
+      this.cameras.main.shake(220,0.015);
       this.cameras.main.flash(80,0,255,150,false);
-      this._emitParticles(this.player.x,this.player.y,[0x00ff88,0x88ffcc,0xffffff],20,100,220);
+      // Shattered glass burst
+      this._emitParticles(this.player.x,this.player.y,[0x00ff88,0x88ffcc,0xaaffcc,0xffffff],28,80,260);
+      this._floatText(this.player.x,this.player.y-40,'SHIELD SHATTERED!','#00ff88');
       this.flipCooldown=0.3; return; // absorb hit!
     }
     this.alive=false;AUDIO.death();
