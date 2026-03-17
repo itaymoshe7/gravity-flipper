@@ -248,19 +248,19 @@ const CHARACTERS=[
 // Coins placed = required + 3 buffer.
 const LEVELS=[
   // 1 — gentle intro: barriers only, very wide gaps, slow
-  {distance:1800,startSpeed:185,endSpeed:205,gap:230,spacing:545,minCount:2,
+  {distance:1800,startSpeed:185,endSpeed:205,gap:230,spacing:480,minCount:3,
    weights:{barrier:1.0},
    coins:4,required:1,hint:'FLIP GRAVITY TO DODGE'},
   // 2 — introduce moving obstacles (slow)
-  {distance:2200,startSpeed:215,endSpeed:238,gap:215,spacing:478,minCount:3,
+  {distance:2200,startSpeed:215,endSpeed:238,gap:215,spacing:420,minCount:4,
    weights:{barrier:0.65,moving:0.35},
    coins:4,required:1,hint:'MOVING OBSTACLES!'},
   // 3 — spikes enter the mix
-  {distance:2800,startSpeed:248,endSpeed:275,gap:198,spacing:410,minCount:4,
+  {distance:2800,startSpeed:248,endSpeed:275,gap:198,spacing:360,minCount:5,
    weights:{barrier:0.42,spike:0.36,moving:0.22},
    coins:5,required:2,hint:'WATCH THE SPIKES'},
   // 4 — patterns and timing, more spikes
-  {distance:3200,startSpeed:282,endSpeed:314,gap:180,spacing:350,minCount:5,
+  {distance:3200,startSpeed:282,endSpeed:314,gap:180,spacing:310,minCount:6,
    weights:{barrier:0.25,spike:0.45,moving:0.30},
    coins:5,required:2,hint:'TIMING IS EVERYTHING'},
   // 5 — lasers introduced gently (22% chance)
@@ -1147,6 +1147,8 @@ class GameScene extends Phaser.Scene{
     this.player=this.add.image(PLAYER_X,H/2,texKey).setScale(2).setDepth(10);
     this.flipGfx=this.add.graphics().setDepth(12);
     this.shieldAura=this.add.graphics().setDepth(11);
+    // Slowmo blue overlay — pure graphics, never touches camera or HTML layer
+    this._slowmoOverlay=this.add.graphics().setDepth(23).setAlpha(0);
     this.trail=[];
     for(let i=0;i<6;i++) this.trail.push(this.add.image(PLAYER_X,H/2,texKey).setScale(2).setAlpha(0.09*(6-i)).setDepth(9));
     this.trailHist=Array(6).fill({x:PLAYER_X,y:H/2});
@@ -1441,7 +1443,7 @@ class GameScene extends Phaser.Scene{
     b.moveSpeed=lerp(isIce?150:60,isIce?260:170,this.levelIndex/7)*(Math.random()>0.5?1:-1);
     b.minY=TUNNEL_TOP+24;b.maxY=TUNNEL_BOTTOM-24;
     this.obstacles.add(b);
-    this._placeCoin(sx-70,Math.random()>0.5?TUNNEL_TOP+38:TUNNEL_BOTTOM-38,wx-70);
+    this._placeCoin(sx-70,H/2,wx-70);
   }
 
   _doLaser(sx,wx){
@@ -1456,17 +1458,26 @@ class GameScene extends Phaser.Scene{
     this._placeCoin(sx-80,H/2,wx-80);
   }
 
-  _placeCoin(sx,sy,wx){
-    sy=clamp(sy,TUNNEL_TOP+22,TUNNEL_BOTTOM-22);
-    // Skip if overlapping a solid obstacle
+  _isCoinBlocked(sx,sy,isPowerup){
+    sy=clamp(sy,TUNNEL_TOP+26,TUNNEL_BOTTOM-26);
+    const buf=isPowerup?36:28;
+    // Blocked by solid obstacle
     for(const obs of this.obstacles.getChildren()){
-      if(Math.abs(obs.x-sx)<obs.displayWidth/2+18&&Math.abs(obs.y-sy)<obs.displayHeight/2+18)return;
+      if(Math.abs(obs.x-sx)<obs.displayWidth/2+buf&&Math.abs(obs.y-sy)<obs.displayHeight/2+buf)return true;
     }
-    // Skip if too close to a laser beam (would block collection path)
-    for(const laser of this.laserList){if(Math.abs(laser.x-sx)<52)return;}
-    // Skip if too close to a gravity gate
-    for(const gate of this.gateList){if(Math.abs(gate.x-sx)<28)return;}
-    // Determine pickup type
+    // Too close to a laser
+    for(const laser of this.laserList){if(Math.abs(laser.x-sx)<58)return true;}
+    // Too close to a gravity gate
+    for(const gate of this.gateList){if(Math.abs(gate.x-sx)<32)return true;}
+    // Too close to an already-placed coin (prevent stacking)
+    for(const c of this.coins.getChildren()){
+      if(Math.abs(c.x-sx)<34&&Math.abs(c.y-sy)<34)return true;
+    }
+    return false;
+  }
+
+  _placeCoin(sx,sy,wx){
+    // Determine pickup type first
     const r=Math.random();
     let tex='coin',isRare=false,isPowerup=false,powerupType=null;
     if(r<0.065&&!this._powerup){
@@ -1478,10 +1489,20 @@ class GameScene extends Phaser.Scene{
     } else if(r<0.18){
       isRare=true; tex='coin_rare';
     }
-    const c=this.add.image(sx,sy,tex).setDepth(7).setScale(isPowerup?1.7:isRare?1.6:1.5);
-    c.bobOffset=Math.random()*Math.PI*2; c.worldX=wx;
-    c.isRare=isRare; c.isPowerup=isPowerup; c.powerupType=powerupType;
-    this.coins.add(c);
+    // Try the requested Y, then two alternative Y positions before giving up
+    const midY=H/2;
+    const candidates=[sy,midY,midY+(sy<midY?60:-60)];
+    for(const cy of candidates){
+      const clamped=clamp(cy,TUNNEL_TOP+26,TUNNEL_BOTTOM-26);
+      if(!this._isCoinBlocked(sx,clamped,isPowerup)){
+        const c=this.add.image(sx,clamped,tex).setDepth(7).setScale(isPowerup?1.7:isRare?1.6:1.5);
+        c.bobOffset=Math.random()*Math.PI*2; c.worldX=wx;
+        c.isRare=isRare; c.isPowerup=isPowerup; c.powerupType=powerupType;
+        this.coins.add(c);
+        return;
+      }
+    }
+    // All candidates blocked — skip this coin
   }
 
   // ── Finish line ────────────────────────────────────────────────────────────
@@ -1668,13 +1689,20 @@ class GameScene extends Phaser.Scene{
       if(this._powerup.timer<=0){
         const expiredType=this._powerup.type;
         this._powerup=null;
-        this.cameras.main.clearTint();
+        this._slowmoOverlay.setAlpha(0);
         const expiredLabels={shield:'SHIELD GONE',magnet:'MAGNET OFF',slowmo:'SLOW-MO ENDED',doublecoins:'2X ENDED'};
         this._floatText(80,55,expiredLabels[expiredType]||'POWER-UP ENDED','#888888');
       }
     }
-    // Slowmo: blue screen tint
-    if(this._powerup?.type==='slowmo') this.cameras.main.setTint(0xaaddff);
+    // Slowmo: subtle blue overlay (no camera tint — would freeze rendering and block HTML buttons)
+    if(this._powerup?.type==='slowmo'){
+      this._slowmoOverlay.clear();
+      this._slowmoOverlay.fillStyle(0x2266aa,0.13);
+      this._slowmoOverlay.fillRect(0,TUNNEL_TOP,W,TUNNEL_BOTTOM-TUNNEL_TOP);
+      this._slowmoOverlay.setAlpha(1);
+    } else {
+      this._slowmoOverlay.setAlpha(0);
+    }
     // Magnet: pull nearby coins toward player
     if(this._powerup?.type==='magnet'){
       for(const c of this.coins.getChildren()){
@@ -1691,17 +1719,19 @@ class GameScene extends Phaser.Scene{
     const clearBefore=this.lvl.distance-450;
     if(this.distTraveled+400<clearBefore){
       const spawnWX=this.distTraveled+(W-PLAYER_X)+100;
-      // Enforce minimum obstacle count: if approaching the end under-count, close the gap
-      const minCount=this.lvl.minCount||0;
-      if(this._spawnCount<minCount&&this.nextObstacleWorldX>spawnWX+260){
-        const needed=minCount-this._spawnCount;
-        const remaining=clearBefore-spawnWX;
-        if(remaining<needed*340) this.nextObstacleWorldX=Math.min(this.nextObstacleWorldX,spawnWX+220);
-      }
       if(spawnWX>=this.nextObstacleWorldX&&this.nextObstacleWorldX<clearBefore){
         this._spawnCluster(this.nextObstacleWorldX);
         const sp=isIntense?Math.floor(this.lvl.spacing*0.68):this.lvl.spacing;
-        this.nextObstacleWorldX+=Phaser.Math.Between(Math.floor(sp*0.75),Math.floor(sp*1.55));
+        let nextGap=Phaser.Math.Between(Math.floor(sp*0.75),Math.floor(sp*1.45));
+        // After spawn: if still under minCount, cap gap so remaining obstacles fit
+        const minCount=this.lvl.minCount||0;
+        const stillNeeded=minCount-this._spawnCount;
+        if(stillNeeded>0){
+          const remaining=clearBefore-this.nextObstacleWorldX;
+          const maxGap=Math.max(210,Math.floor(remaining/(stillNeeded+0.5)));
+          nextGap=Math.min(nextGap,maxGap);
+        }
+        this.nextObstacleWorldX+=nextGap;
       }
     }
 
