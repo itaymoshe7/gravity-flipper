@@ -268,11 +268,11 @@ const LEVELS=[
    weights:{barrier:0.20,spike:0.28,moving:0.26,laser:0.26},
    coins:5,required:3,hint:'LASERS AHEAD!'},
   // 6 — 7 obstacles + gates, gap 145, 255px/s
-  {distance:4600,startSpeed:255,endSpeed:255,gap:145,spacing:385,minCount:7,
+  {distance:4600,startSpeed:235,endSpeed:235,gap:145,spacing:385,minCount:7,
    weights:{barrier:0.12,spike:0.20,moving:0.20,laser:0.28,gravitygate:0.20},
    coins:5,required:3,hint:'GRAVITY GATES ACTIVE'},
   // 7 — 8 obstacles + gauntlet, gap 140, 270px/s
-  {distance:5100,startSpeed:270,endSpeed:270,gap:140,spacing:360,minCount:8,
+  {distance:5100,startSpeed:250,endSpeed:250,gap:140,spacing:360,minCount:8,
    weights:{barrier:0.08,spike:0.17,moving:0.17,laser:0.24,gauntlet:0.18,gravitygate:0.16},
    coins:6,required:4,hint:'GAUNTLET MODE'},
   // 8 — 9 obstacles, gap 130, 285px/s
@@ -503,6 +503,13 @@ class AudioMgr{
     // Bright ping on top
     this._osc(this.sfxBus,1047,'triangle',0.22,t,0.08);
     this._osc(this.sfxBus,1568,'triangle',0.14,t+0.06,0.12);
+  }
+  heartGet(){
+    if(!this.ctx||this.muted)return;this.resume();
+    const t=this.ctx.currentTime;
+    this._osc(this.sfxBus,440,'sine',0.28,t,0.08);
+    this._osc(this.sfxBus,660,'sine',0.24,t+0.08,0.08);
+    this._osc(this.sfxBus,880,'triangle',0.20,t+0.16,0.16);
   }
   splash(){
     if(!this.ctx||this.muted)return;this.resume();
@@ -774,6 +781,13 @@ class BootScene extends Phaser.Scene{
     g.fillStyle(0xff7700);g.fillCircle(6,6,4);
     g.fillStyle(0xffee00);g.fillCircle(6,6,2);
     g.generateTexture('fireball',12,12);
+
+    // ─ Heart pickup (extra life) ─
+    g.clear();
+    g.fillStyle(0xff2244);g.fillCircle(4,4,4);g.fillCircle(10,4,4);
+    g.fillTriangle(0,4,14,4,7,13);
+    g.fillStyle(0xff6688);g.fillCircle(3,3,2);
+    g.generateTexture('heart_pickup',14,14);
     g.destroy();
   }
   create(){INPUT.init(this.sys.game.canvas);this.scene.start('Splash');}
@@ -1078,6 +1092,20 @@ class GameScene extends Phaser.Scene{
     }
     this._laserGapToggle=true;
     this._lastLaserWorldX=-9999;
+    this._lastGateWorldX=-9999;
+    // Hearts / extra lives
+    this._hearts=1; this._maxHearts=2;
+    this._invincible=false; this._invincibleTimer=0;
+    this._heartPickupSpawned=false;
+    this._heartPickupWX=(this.levelIndex>=4)?Math.floor(this.lvl.distance*0.70):-1;
+    // Lava mechanics
+    this._rocks=[];
+    this._lavaGfx=null;
+    if(this.theme.style==='lava'&&this.levelIndex>=1){
+      this._lavaGfx=this.add.graphics().setDepth(14);
+      this._lavaWave={phase:'idle',timer:7+Math.random()*4,height:0};
+      this._rockTimer=5+Math.random()*4;
+    }
     this._levelFlips=0; this._rareCoins=0;
     this.fireballs=[]; this._fireballTimer=2.0;
     this._currentTimer=2.5; this._currentDuration=0; this._currentBoost=0;
@@ -1405,6 +1433,8 @@ class GameScene extends Phaser.Scene{
     const pname=localStorage.getItem('gf_name')||'';
     if(pname)this.add.text(W/2,H-10,pname,{fontFamily:'"Press Start 2P"',fontSize:'7px',color:'#333'}).setOrigin(0.5,1).setDepth(20);
     this.coinTxt=this.add.text(10,30,`\u25c6 0/${this.lvl.required}`,{fontFamily:'"Press Start 2P"',fontSize:'14px',color:'#ffdd00'}).setDepth(20);
+    this.heartsTxt=this.add.text(W-10,28,'',{fontFamily:'"Press Start 2P"',fontSize:'13px',color:'#ff4444'}).setOrigin(1,0).setDepth(20);
+    this._updateHeartsHUD();
     this.progGfx=this.add.graphics().setDepth(20);
     this.powerupGfx=this.add.graphics().setDepth(20);
     this.powerupTxt=this.add.text(10,52,'',{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#00ff88'}).setDepth(20);
@@ -1707,13 +1737,15 @@ class GameScene extends Phaser.Scene{
     const b=this.add.image(sx,H/2,'block').setScale(scaleX,scaleY).setDepth(6).setTint(tint);
     b.obstacleType='moving';
     b.moveSpeed=lerp(isIce?150:60,isIce?260:170,this.levelIndex/7)*(Math.random()>0.5?1:-1);
+    if(this.levelIndex>=5)b.moveSpeed*=0.65;
     b.minY=TUNNEL_TOP+24;b.maxY=TUNNEL_BOTTOM-24;
     this.obstacles.add(b);
   }
 
   _doLaser(sx,wx){
-    // Spacing check: never place two lasers within 300 world-px of each other
-    if(wx-this._lastLaserWorldX<300)return;
+    // Spacing: never within 500px of another laser or 400px after a gravity gate
+    if(wx-this._lastLaserWorldX<500)return;
+    if(wx-this._lastGateWorldX<400)return;
     this._lastLaserWorldX=wx;
     const d=this.levelIndex/11;
     const gfx=this.add.graphics().setDepth(7);
@@ -1722,8 +1754,8 @@ class GameScene extends Phaser.Scene{
     this._laserGapToggle=!this._laserGapToggle;
     const safeHint=gapTop?'\u2191 SAFE UP':'\u2193 SAFE DOWN';
     const dangerTxt=this.add.text(sx,TUNNEL_TOP-14,'\u26a0 '+safeHint,{fontFamily:'"Press Start 2P"',fontSize:'8px',color:'#ff8800'}).setOrigin(0.5,1).setDepth(10).setVisible(false);
-    // Fair timing: 1s warn, max 0.8s deadly, min 1.2s off
-    const warnDur=1.0, onDur=0.8, offDur=lerp(1.8,1.2,d);
+    // Fairer timing: 1s warn, 0.6s deadly, 1.5-2s off
+    const warnDur=1.0, onDur=0.6, offDur=lerp(2.0,1.5,d);
     const totalPeriod=warnDur+onDur+offDur;
     this.laserList.push({
       gfx,txt:dangerTxt,x:sx,warnDur,onDur,offDur,totalPeriod,
@@ -1871,6 +1903,15 @@ class GameScene extends Phaser.Scene{
     if(this._inputBuf>0){
       this._inputBuf=Math.max(0,this._inputBuf-dt);
       if(this.flipCooldown<=0)this._doFlip();
+    }
+    // Invincibility frames (hearts extra life)
+    if(this._invincible){
+      this._invincibleTimer=Math.max(0,this._invincibleTimer-dt);
+      this.player.setAlpha(Math.sin(this._invincibleTimer*22)>0?1:0.2);
+      if(this._invincibleTimer<=0){
+        this._invincible=false;
+        this.player.setAlpha(1);
+      }
     }
     const prog=clamp(this.distTraveled/this.lvl.distance,0,1);
     this.speed=this.lvl.startSpeed;
@@ -2067,6 +2108,15 @@ class GameScene extends Phaser.Scene{
         this._coinScheduleIdx++;
       }
     }
+    // Heart pickup spawn (levels 5+, once per level)
+    if(this._heartPickupWX>0&&!this._heartPickupSpawned&&this._w2s(this._heartPickupWX)<=W+60){
+      this._heartPickupSpawned=true;
+      this._spawnHeartPickup(this._heartPickupWX);
+    }
+    // Lava cave rising lava + falling rocks
+    if(this._lavaGfx&&this.gameStarted){
+      if(this._updateLavaMechanics(dt,time))return;
+    }
     // Lava fireballs
     if(this.theme.style==='lava'){
       this._fireballTimer-=dt;
@@ -2225,6 +2275,7 @@ class GameScene extends Phaser.Scene{
   }
 
   _doGravityGate(sx,wx){
+    this._lastGateWorldX=wx;
     const gfx=this.add.graphics().setDepth(7);
     this.gateList.push({gfx,x:sx,triggered:false,rippleR:undefined,rippleA:0});
   }
@@ -2256,6 +2307,18 @@ class GameScene extends Phaser.Scene{
   }
 
   _collectCoin(c){
+    if(c.isHeart){
+      if(this._hearts<this._maxHearts){
+        this._hearts++;
+        this._updateHeartsHUD();
+        this._floatText(c.x,c.y-24,'\u2665 +1 LIFE','#ff4444');
+        this._emitParticles(c.x,c.y,[0xff4444,0xff8888,0xffffff],18,80,160);
+        AUDIO.heartGet();
+      } else {
+        this._floatText(c.x,c.y-24,'FULL HP','#ff8888');
+      }
+      this.coins.remove(c,true,true);return;
+    }
     if(c.isPowerup){
       this._activatePowerup(c.powerupType);
       this._floatText(c.x,c.y-24,c.powerupType.toUpperCase()+'!','#00ff88');
@@ -2401,8 +2464,88 @@ class GameScene extends Phaser.Scene{
     }
   }
 
+  _updateLavaMechanics(dt,time){
+    const g=this._lavaGfx; g.clear();
+    const lw=this._lavaWave;
+    lw.timer-=dt;
+    switch(lw.phase){
+      case 'idle':
+        if(lw.timer<=0){lw.phase='warn';lw.timer=2.0;this._floatText(W/2,TUNNEL_BOTTOM-50,'\u26a0 LAVA SURGE!','#ff4400');}
+        break;
+      case 'warn':
+        {const p=0.4+0.4*Math.sin(time*0.025);
+        g.fillStyle(0xff4400,p*0.5);g.fillRect(0,TUNNEL_BOTTOM-28,W,28);
+        this.cameraShake=Math.max(this.cameraShake,0.006*p);}
+        if(lw.timer<=0){lw.phase='rising';lw.timer=0.5;}
+        break;
+      case 'rising':
+        lw.height=Math.max(0,(1-(lw.timer/0.5))*170);
+        if(lw.timer<=0){lw.phase='peak';lw.timer=1.5;lw.height=170;}
+        break;
+      case 'peak':
+        if(lw.timer<=0){lw.phase='receding';lw.timer=0.5;}
+        break;
+      case 'receding':
+        lw.height=Math.max(0,(lw.timer/0.5)*170);
+        if(lw.timer<=0){lw.phase='idle';lw.timer=9+Math.random()*5;lw.height=0;}
+        break;
+    }
+    if(lw.height>0){
+      const lavaTop=TUNNEL_BOTTOM-lw.height;
+      g.fillStyle(0xff3300,0.92);g.fillRect(0,lavaTop,W,lw.height);
+      // Wavy bright surface
+      for(let x=0;x<W;x+=10){g.fillStyle(0xff8800,0.75);g.fillRect(x,lavaTop+Math.sin(time*0.006+x*0.05)*3,7,4);}
+      g.fillStyle(0xffcc00,0.55);g.fillRect(0,lavaTop,W,3);
+      // Kill check
+      const ph2=this.player.displayHeight/2;
+      if(this.player.y+ph2>lavaTop-2){this._die();if(!this.alive)return true;}
+    }
+    // Falling rocks
+    this._rockTimer-=dt;
+    if(this._rockTimer<=0){
+      this._rockTimer=5+Math.random()*5;
+      this._rocks.push({x:Phaser.Math.Between(50,W-50),phase:'shadow',timer:1.5,y:TUNNEL_TOP+10,vy:0});
+    }
+    for(let i=this._rocks.length-1;i>=0;i--){
+      const rock=this._rocks[i];
+      rock.timer-=dt;
+      if(rock.phase==='shadow'){
+        const p=0.3+0.4*Math.sin(time*0.02);
+        g.fillStyle(0x441100,p*0.65);g.fillCircle(rock.x,TUNNEL_BOTTOM-10,20);
+        g.fillStyle(0xff4400,p*0.25);g.fillCircle(rock.x,TUNNEL_BOTTOM-10,30);
+        // Arrow warning above
+        g.fillStyle(0xff8800,p*0.8);g.fillTriangle(rock.x-7,TUNNEL_TOP+28,rock.x+7,TUNNEL_TOP+28,rock.x,TUNNEL_TOP+10);
+        if(rock.timer<=0){rock.phase='falling';rock.y=TUNNEL_TOP+12;rock.vy=180;}
+      } else if(rock.phase==='falling'){
+        rock.vy=Math.min(rock.vy+1400*dt,950);rock.y+=rock.vy*dt;
+        g.fillStyle(0x553300,1);g.fillCircle(rock.x,rock.y,13);
+        g.fillStyle(0x774422,1);g.fillCircle(rock.x-3,rock.y-3,5);
+        g.fillStyle(0x221100,0.55);g.fillCircle(rock.x+4,rock.y+4,4);
+        if(rock.y>=TUNNEL_BOTTOM-14){rock.phase='landed';rock.timer=1.0;rock.y=TUNNEL_BOTTOM-14;}
+        const dx=this.player.x-rock.x,dy=this.player.y-rock.y;
+        if(Math.sqrt(dx*dx+dy*dy)<20){this._die();if(!this.alive)return true;}
+      } else if(rock.phase==='landed'){
+        g.fillStyle(0x553300,1);g.fillCircle(rock.x,rock.y,13);
+        const dx=this.player.x-rock.x,dy=this.player.y-rock.y;
+        if(Math.sqrt(dx*dx+dy*dy)<20){this._die();if(!this.alive)return true;}
+        if(rock.timer<=0)this._rocks.splice(i,1);
+      }
+    }
+    return false;
+  }
+  _updateHeartsHUD(){
+    if(this.heartsTxt)this.heartsTxt.setText('\u2665'.repeat(this._hearts));
+  }
+  _spawnHeartPickup(wx){
+    const sx=this._w2s(wx);
+    const c=this.add.image(sx,H/2,'heart_pickup').setDepth(7).setScale(2.4);
+    c.bobOffset=Math.random()*Math.PI*2;c.worldX=wx;
+    c.isRare=false;c.isPowerup=false;c.powerupType=null;c.isHeart=true;
+    this.coins.add(c);
+  }
   _die(){
     if(!this.alive)return;
+    if(this._invincible)return;
     if(this._powerup?.type==='shield'){
       this._powerup=null;
       AUDIO.shieldHit();
@@ -2412,6 +2555,17 @@ class GameScene extends Phaser.Scene{
       this._emitParticles(this.player.x,this.player.y,[0x00ff88,0x88ffcc,0xaaffcc,0xffffff],28,80,260);
       this._floatText(this.player.x,this.player.y-40,'SHIELD SHATTERED!','#00ff88');
       this.flipCooldown=0.3; return; // absorb hit!
+    }
+    // Extra heart: absorb hit with brief invincibility
+    if(this._hearts>1){
+      this._hearts--;
+      this._invincible=true; this._invincibleTimer=2.0;
+      this.cameras.main.shake(180,0.012);
+      this.cameras.main.flash(80,255,80,80,false);
+      this._emitParticles(this.player.x,this.player.y,[0xff4444,0xff8888,0xffffff],18,60,150);
+      this._floatText(W/2,H/2-40,'CLOSE CALL!','#ff4444');
+      this._updateHeartsHUD();
+      return;
     }
     this.alive=false;AUDIO.death();
     this.cameras.main.shake(480,0.022);
@@ -2529,10 +2683,21 @@ class DeathScene extends Phaser.Scene{
     saveScore(this.finalScore,this.levelIndex);
     const theme=getTrack(this.levelIndex);
     this.cameras.main.setBackgroundColor(theme.bg);
-    const best=parseInt(localStorage.getItem('gf_best')||'0');
-    const isNew=this.finalScore>=best&&this.finalScore>0;
+    const prevBest=parseInt(localStorage.getItem('gf_best')||'0');
+    const isNew=this.finalScore>0&&this.finalScore>=prevBest;
+    if(isNew)localStorage.setItem('gf_best',this.finalScore);
     const myName=(localStorage.getItem('gf_name')||'').toUpperCase();
     const chalHTML=CHALLENGE.active?(()=>{const diff=this.finalScore-CHALLENGE.score;const won=diff>=0;return`<div style="border:2px solid ${won?'#00ff88':'#ff4444'};padding:6px 8px;margin:6px 0;font-size:clamp(8px,2.2vw,10px)"><div style="color:#888;margin-bottom:2px">VS ${CHALLENGE.name}</div><div style="color:${won?'#00ff88':'#ff4444'}">${won?'\u25b2 CHALLENGE BEATEN! +'+diff:'\u25bc LOST BY '+Math.abs(diff)}</div></div>`;})():'';
+    const pbHTML=isNew
+      ?`<div style="animation:chal-in 0.6s 0.4s both;text-align:center;margin:6px 0 4px">
+          <div style="font-size:clamp(22px,7vw,30px);animation:trophy-pulse 0.8s ease-in-out infinite;display:inline-block">&#x1F3C6;</div>
+          <div style="color:#ffdd00;font-size:clamp(9px,2.8vw,12px);letter-spacing:1px;margin-top:3px">NEW PERSONAL BEST!</div>
+        </div>`
+      :`<div style="margin:4px 0 2px">
+          <div class="ov-sub" style="color:#888;font-size:clamp(7px,2vw,9px)">PERSONAL BEST</div>
+          <div class="ov-score" style="color:#ffff00;font-size:clamp(15px,5vw,20px);margin:1px 0">${prevBest||'-'}</div>
+          ${prevBest>0&&this.finalScore>0?`<div class="ov-sub" style="color:#666;font-size:clamp(7px,2vw,9px)">SO CLOSE! TRY AGAIN</div>`:''}
+        </div>`;
     OV.show('ov-death',
       `<div class="ov-wrap">
         <div class="ov-title" style="color:#ff4444;text-shadow:3px 3px #880000">GAME<br>OVER</div>
@@ -2540,7 +2705,7 @@ class DeathScene extends Phaser.Scene{
         <hr class="ov-rule">
         <div class="ov-sub" style="color:#888">SCORE</div>
         <div class="ov-score" style="color:${isNew?'#ffff00':'#00ffff'}">${this.finalScore}</div>
-        ${isNew?'<div class="ov-sub" style="color:#ffff00">\u2605 NEW BEST! \u2605</div>':`<div class="ov-sub" style="color:#ffff00">BEST: ${best}</div>`}
+        ${pbHTML}
         <div class="ov-sub" style="color:#ffdd00">\u25c6 COINS: ${this.coins}</div>
         ${chalHTML}
         <hr class="ov-rule">
