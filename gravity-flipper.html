@@ -1081,11 +1081,24 @@ class GameScene extends Phaser.Scene{
         if(this._obstacleSchedule[i]-this._obstacleSchedule[i-1]<400)
           this._obstacleSchedule[i]=this._obstacleSchedule[i-1]+400;
       }
-      // Coin at midpoint between each consecutive pair (shifted slightly forward to clear obstacle A)
+      // Coins: required+4 minimum, evenly distributed, 150px clearance from obstacles in world X
+      const targetCoins=(this.lvl.required||1)+4;
+      const coinStartWX=Math.floor(d*0.12),coinEndWX=Math.floor(d*0.90);
       this._coinSchedule=[];
-      for(let i=0;i<this._obstacleSchedule.length-1;i++){
-        const mid=Math.floor((this._obstacleSchedule[i]+this._obstacleSchedule[i+1])/2);
-        this._coinSchedule.push(mid);
+      const coinSpacing=(coinEndWX-coinStartWX)/Math.max(1,targetCoins-1);
+      for(let i=0;i<targetCoins;i++){
+        let wx=Math.floor(coinStartWX+i*coinSpacing);
+        let placed=false;
+        for(let shift=0;shift<=250&&!placed;shift+=10){
+          const cands=shift===0?[wx]:[wx+shift,wx-shift];
+          for(const cand of cands){
+            if(cand<coinStartWX||cand>coinEndWX)continue;
+            let clear=true;
+            for(const owx of this._obstacleSchedule){if(Math.abs(cand-owx)<150){clear=false;break;}}
+            if(clear){wx=cand;placed=true;break;}
+          }
+        }
+        this._coinSchedule.push(Math.max(coinStartWX,Math.min(coinEndWX,wx)));
       }
       this._obstacleScheduleIdx=0;
       this._coinScheduleIdx=0;
@@ -1098,12 +1111,11 @@ class GameScene extends Phaser.Scene{
     this._invincible=false; this._invincibleTimer=0;
     this._heartPickupSpawned=false;
     this._heartPickupWX=(this.levelIndex>=4)?Math.floor(this.lvl.distance*0.70):-1;
-    // Lava mechanics
+    // Lava mechanics (falling rocks only)
     this._rocks=[];
     this._lavaGfx=null;
     if(this.theme.style==='lava'&&this.levelIndex>=1){
       this._lavaGfx=this.add.graphics().setDepth(14);
-      this._lavaWave={phase:'idle',timer:7+Math.random()*4,height:0};
       this._rockTimer=5+Math.random()*4;
     }
     this._levelFlips=0; this._rareCoins=0;
@@ -2020,7 +2032,7 @@ class GameScene extends Phaser.Scene{
         if(laser._buzzTimer<=0){laser._buzzTimer=0.22;AUDIO.laserBuzz();}
       }
       this._drawLaser(laser,phaseStr);
-      if(phaseStr==='on'&&Math.abs(this.player.x-laser.x)<10){
+      if(phaseStr==='on'&&Math.abs(this.player.x-laser.x)<14){
         const gapH=Math.floor((TUNNEL_BOTTOM-TUNNEL_TOP)*0.35);
         const beamTop=laser.gapTop?(TUNNEL_TOP+gapH):TUNNEL_TOP;
         const beamBot=laser.gapTop?TUNNEL_BOTTOM:(TUNNEL_BOTTOM-gapH);
@@ -2344,9 +2356,9 @@ class GameScene extends Phaser.Scene{
   }
 
   _aabb(a,b){
-    // Player hitbox ≈28% of sprite; obstacles 55% + 3px padding for edge registration
-    const aw=a.displayWidth*0.28,ah=a.displayHeight*0.28;
-    const bw=b.displayWidth*0.55+3,bh=b.displayHeight*0.55+3;
+    // Player hitbox ~45% of sprite; obstacles ~55% — matches visuals, edge touches register
+    const aw=a.displayWidth*0.45,ah=a.displayHeight*0.45;
+    const bw=b.displayWidth*0.55,bh=b.displayHeight*0.55;
     return Math.abs(a.x-b.x)<(aw+bw)/2&&Math.abs(a.y-b.y)<(ah+bh)/2;
   }
 
@@ -2466,40 +2478,6 @@ class GameScene extends Phaser.Scene{
 
   _updateLavaMechanics(dt,time){
     const g=this._lavaGfx; g.clear();
-    const lw=this._lavaWave;
-    lw.timer-=dt;
-    switch(lw.phase){
-      case 'idle':
-        if(lw.timer<=0){lw.phase='warn';lw.timer=2.0;this._floatText(W/2,TUNNEL_BOTTOM-50,'\u26a0 LAVA SURGE!','#ff4400');}
-        break;
-      case 'warn':
-        {const p=0.4+0.4*Math.sin(time*0.025);
-        g.fillStyle(0xff4400,p*0.5);g.fillRect(0,TUNNEL_BOTTOM-28,W,28);
-        this.cameraShake=Math.max(this.cameraShake,0.006*p);}
-        if(lw.timer<=0){lw.phase='rising';lw.timer=0.5;}
-        break;
-      case 'rising':
-        lw.height=Math.max(0,(1-(lw.timer/0.5))*170);
-        if(lw.timer<=0){lw.phase='peak';lw.timer=1.5;lw.height=170;}
-        break;
-      case 'peak':
-        if(lw.timer<=0){lw.phase='receding';lw.timer=0.5;}
-        break;
-      case 'receding':
-        lw.height=Math.max(0,(lw.timer/0.5)*170);
-        if(lw.timer<=0){lw.phase='idle';lw.timer=9+Math.random()*5;lw.height=0;}
-        break;
-    }
-    if(lw.height>0){
-      const lavaTop=TUNNEL_BOTTOM-lw.height;
-      g.fillStyle(0xff3300,0.92);g.fillRect(0,lavaTop,W,lw.height);
-      // Wavy bright surface
-      for(let x=0;x<W;x+=10){g.fillStyle(0xff8800,0.75);g.fillRect(x,lavaTop+Math.sin(time*0.006+x*0.05)*3,7,4);}
-      g.fillStyle(0xffcc00,0.55);g.fillRect(0,lavaTop,W,3);
-      // Kill check
-      const ph2=this.player.displayHeight/2;
-      if(this.player.y+ph2>lavaTop-2){this._die();if(!this.alive)return true;}
-    }
     // Falling rocks
     this._rockTimer-=dt;
     if(this._rockTimer<=0){
