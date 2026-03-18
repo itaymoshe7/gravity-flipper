@@ -216,17 +216,17 @@ function getTheme(n){return THEMES[Math.min(n,THEMES.length-1)];}
 
 // ── Player-selectable track styles ────────────────────────────────────────────
 const TRACKS=[
-  {id:'neon', name:'NEON CITY',  style:'neon',  previewGrad:['#00ccff','#8800ff'],
+  {id:'neon', name:'NEON CITY',  style:'neon',  previewGrad:['#00ccff','#8800ff'],unlock:0,
    bg:'#060012',wallFill:0x060012,wallLine:0x00ccff,wallGlow:0x4400aa,blockTint:0x88ccff,spikeTint:0xff4466,laserCol:0xff00aa},
-  {id:'lava', name:'LAVA CAVE',  style:'lava',  previewGrad:['#ff8800','#ff2200'],
+  {id:'lava', name:'LAVA CAVE',  style:'lava',  previewGrad:['#ff8800','#ff2200'],unlock:0,
    bg:'#0e0300',wallFill:0x1c0800,wallLine:0xff6600,wallGlow:0x992200,blockTint:0xffaa44,spikeTint:0xff4400,laserCol:0xff5500},
-  {id:'ice',  name:'ICE TUNNEL', style:'ice',   previewGrad:['#88ddff','#eef8ff'],
+  {id:'ice',  name:'ICE TUNNEL', style:'ice',   previewGrad:['#88ddff','#eef8ff'],unlock:75,
    bg:'#000c18',wallFill:0x001828,wallLine:0x66ccff,wallGlow:0x003355,blockTint:0xaaddff,spikeTint:0xffffff,laserCol:0x00ccff},
   {id:'cyber',name:'CYBER GRID', style:'cyber', previewGrad:['#00ff44','#004422'],
    bg:'#000800',wallFill:0x001200,wallLine:0x00ff44,wallGlow:0x004422,blockTint:0x88ffaa,spikeTint:0xffff00,laserCol:0x00ff44},
   {id:'void',    name:'SPACE VOID',     style:'void',    previewGrad:['#aaaacc','#001133'],
    bg:'#000008',wallFill:0x050510,wallLine:0x8888cc,wallGlow:0x221144,blockTint:0xccccdd,spikeTint:0x88aaff,laserCol:0xaaaaff},
-  {id:'ocean',   name:'DEEP OCEAN',     style:'ocean',   previewGrad:['#0055aa','#001133'],
+  {id:'ocean',   name:'DEEP OCEAN',     style:'ocean',   previewGrad:['#0055aa','#001133'],unlock:150,
    bg:'#000a18',wallFill:0x000a18,wallLine:0x0088dd,wallGlow:0x001144,blockTint:0x0099ee,spikeTint:0x00ffcc,laserCol:0x0055ff},
   {id:'sky',     name:'SKY HIGH',       style:'sky',     previewGrad:['#88ccff','#ddf4ff'],
    bg:'#0a1828',wallFill:0x0a2035,wallLine:0x88ccff,wallGlow:0x224488,blockTint:0xaaddff,spikeTint:0xffaa44,laserCol:0x55aaff},
@@ -237,64 +237,64 @@ function getTrack(){const id=localStorage.getItem('gf_track')||'neon';return TRA
 
 // ── Character definitions ─────────────────────────────────────────────────────
 const CHARACTERS=[
-  {id:'ship', name:'SHIP',  col:0x00ffff, desc:'CLASSIC'},
-  {id:'cube', name:'CUBE',  col:0x44ff88, desc:'HEAVY'},
-  {id:'dart', name:'DART',  col:0xff8844, desc:'FAST'},
-  {id:'orb',  name:'ORB',   col:0xff44ff, desc:'ROUND'},
+  {id:'ship', name:'SHIP',     col:0x00ffff, desc:'CLASSIC', unlock:0},
+  {id:'cube', name:'CUBE',     col:0x44ff88, desc:'HEAVY',   unlock:0},
+  {id:'dart', name:'TRIANGLE', col:0xff8844, desc:'FAST',    unlock:50},
+  {id:'orb',  name:'ORION',    col:0xff44ff, desc:'ROUND',   unlock:100},
 ];
 
 // ── Level definitions ─────────────────────────────────────────────────────────
 // weights: probability distribution for obstacle type selection each spawn.
 // Coins placed = required + 3 buffer.
 const LEVELS=[
-  // 1 — gentle intro: barriers only, very wide gaps, constant 180 px/s
-  {distance:1800,startSpeed:180,endSpeed:180,gap:220,spacing:580,minCount:3,
+  // 1 — 2 barriers, gap 180, 180px/s
+  {distance:2200,startSpeed:180,endSpeed:180,gap:180,spacing:600,minCount:2,
    weights:{barrier:1.0},
-   coins:4,required:1,hint:'FLIP GRAVITY TO DODGE'},
-  // 2 — introduce moving obstacles
-  {distance:2200,startSpeed:200,endSpeed:200,gap:210,spacing:520,minCount:4,
+   coins:3,required:1,hint:'FLIP GRAVITY TO DODGE'},
+  // 2 — 3 obstacles, gap 170, 195px/s
+  {distance:2800,startSpeed:195,endSpeed:195,gap:170,spacing:560,minCount:3,
    weights:{barrier:0.65,moving:0.35},
-   coins:4,required:1,hint:'MOVING OBSTACLES!'},
-  // 3 — spikes enter
-  {distance:2800,startSpeed:220,endSpeed:220,gap:195,spacing:460,minCount:4,
+   coins:3,required:1,hint:'MOVING OBSTACLES!'},
+  // 3 — 4 obstacles, gap 160, 210px/s
+  {distance:3200,startSpeed:210,endSpeed:210,gap:160,spacing:510,minCount:4,
    weights:{barrier:0.42,spike:0.36,moving:0.22},
-   coins:5,required:2,hint:'WATCH THE SPIKES'},
-  // 4 — patterns and timing
-  {distance:3200,startSpeed:240,endSpeed:240,gap:185,spacing:400,minCount:5,
+   coins:4,required:2,hint:'WATCH THE SPIKES'},
+  // 4 — 5 obstacles, gap 155, 225px/s
+  {distance:3600,startSpeed:225,endSpeed:225,gap:155,spacing:460,minCount:5,
    weights:{barrier:0.25,spike:0.45,moving:0.30},
-   coins:5,required:2,hint:'TIMING IS EVERYTHING'},
-  // 5 — lasers introduced
-  {distance:3800,startSpeed:260,endSpeed:260,gap:175,spacing:360,minCount:5,
-   weights:{barrier:0.20,spike:0.30,moving:0.28,laser:0.22},
-   coins:6,required:3,hint:'LASERS AHEAD!'},
-  // 6 — gravity gates debut
-  {distance:4300,startSpeed:280,endSpeed:280,gap:160,spacing:320,minCount:6,
-   weights:{barrier:0.12,spike:0.22,moving:0.22,laser:0.28,gravitygate:0.16},
-   coins:6,required:3,hint:'GRAVITY GATES ACTIVE'},
-  // 7 — gauntlet unlocked
-  {distance:5000,startSpeed:300,endSpeed:300,gap:145,spacing:285,minCount:6,
-   weights:{barrier:0.08,spike:0.18,moving:0.18,laser:0.24,gauntlet:0.18,gravitygate:0.14},
-   coins:7,required:4,hint:'GAUNTLET MODE'},
-  // 8 — expert density
-  {distance:5500,startSpeed:320,endSpeed:320,gap:135,spacing:255,minCount:7,
-   weights:{barrier:0.06,spike:0.15,moving:0.15,laser:0.27,gauntlet:0.25,gravitygate:0.12},
-   coins:7,required:4,hint:'MAXIMUM INTENSITY'},
-  // 9 — capped at 340 px/s
-  {distance:6100,startSpeed:340,endSpeed:340,gap:125,spacing:228,minCount:7,
-   weights:{barrier:0.06,spike:0.13,moving:0.13,laser:0.30,gauntlet:0.28,gravitygate:0.10},
-   coins:8,required:5,hint:'DEEP PRESSURE'},
+   coins:4,required:2,hint:'TIMING IS EVERYTHING'},
+  // 5 — 6 obstacles + lasers, gap 150, 240px/s
+  {distance:4100,startSpeed:240,endSpeed:240,gap:150,spacing:420,minCount:6,
+   weights:{barrier:0.20,spike:0.28,moving:0.26,laser:0.26},
+   coins:5,required:3,hint:'LASERS AHEAD!'},
+  // 6 — 7 obstacles + gates, gap 145, 255px/s
+  {distance:4600,startSpeed:255,endSpeed:255,gap:145,spacing:385,minCount:7,
+   weights:{barrier:0.12,spike:0.20,moving:0.20,laser:0.28,gravitygate:0.20},
+   coins:5,required:3,hint:'GRAVITY GATES ACTIVE'},
+  // 7 — 8 obstacles + gauntlet, gap 140, 270px/s
+  {distance:5100,startSpeed:270,endSpeed:270,gap:140,spacing:360,minCount:8,
+   weights:{barrier:0.08,spike:0.17,moving:0.17,laser:0.24,gauntlet:0.18,gravitygate:0.16},
+   coins:6,required:4,hint:'GAUNTLET MODE'},
+  // 8 — 9 obstacles, gap 130, 285px/s
+  {distance:5600,startSpeed:285,endSpeed:285,gap:130,spacing:360,minCount:9,
+   weights:{barrier:0.06,spike:0.14,moving:0.14,laser:0.27,gauntlet:0.25,gravitygate:0.14},
+   coins:6,required:4,hint:'MAXIMUM INTENSITY'},
+  // 9+ — 300px/s cap
+  {distance:5900,startSpeed:300,endSpeed:300,gap:130,spacing:360,minCount:9,
+   weights:{barrier:0.06,spike:0.12,moving:0.12,laser:0.30,gauntlet:0.28,gravitygate:0.12},
+   coins:7,required:5,hint:'DEEP PRESSURE'},
   // 10
-  {distance:6600,startSpeed:340,endSpeed:340,gap:118,spacing:205,minCount:8,
-   weights:{barrier:0.05,spike:0.11,moving:0.11,laser:0.33,gauntlet:0.31,gravitygate:0.09},
-   coins:8,required:5,hint:'STORM INCOMING'},
+  {distance:6400,startSpeed:300,endSpeed:300,gap:130,spacing:360,minCount:10,
+   weights:{barrier:0.05,spike:0.10,moving:0.10,laser:0.33,gauntlet:0.31,gravitygate:0.11},
+   coins:7,required:5,hint:'STORM INCOMING'},
   // 11
-  {distance:7200,startSpeed:340,endSpeed:340,gap:112,spacing:185,minCount:8,
-   weights:{barrier:0.04,spike:0.10,moving:0.10,laser:0.355,gauntlet:0.335,gravitygate:0.07},
-   coins:9,required:6,hint:'FACTORY STORM'},
+  {distance:6900,startSpeed:300,endSpeed:300,gap:130,spacing:360,minCount:10,
+   weights:{barrier:0.04,spike:0.09,moving:0.09,laser:0.355,gauntlet:0.335,gravitygate:0.09},
+   coins:8,required:6,hint:'FACTORY STORM'},
   // 12
-  {distance:7800,startSpeed:340,endSpeed:340,gap:108,spacing:168,minCount:8,
-   weights:{barrier:0.04,spike:0.09,moving:0.09,laser:0.365,gauntlet:0.345,gravitygate:0.06},
-   coins:9,required:6,hint:'BEYOND LIMITS'},
+  {distance:7500,startSpeed:300,endSpeed:300,gap:130,spacing:360,minCount:11,
+   weights:{barrier:0.04,spike:0.08,moving:0.08,laser:0.365,gauntlet:0.345,gravitygate:0.08},
+   coins:8,required:6,hint:'BEYOND LIMITS'},
 ];
 function getLevel(n){return LEVELS[Math.min(n,LEVELS.length-1)];}
 
@@ -348,6 +348,15 @@ function setInventory(inv){localStorage.setItem('gf_inventory',JSON.stringify(in
 function getInvCount(type){return getInventory()[type]||0;}
 function addToInventory(type){const inv=getInventory();inv[type]=(inv[type]||0)+1;setInventory(inv);}
 function removeFromInventory(type){const inv=getInventory();if((inv[type]||0)>0){inv[type]--;setInventory(inv);return true;}return false;}
+function isUnlocked(id){
+  const all=[...TRACKS,...CHARACTERS];const item=all.find(x=>x.id===id);
+  if(!item||item.unlock===0||item.unlock===undefined)return true;
+  const u=JSON.parse(localStorage.getItem('gf_unlocked')||'[]');return u.includes(id);
+}
+function doUnlock(id){
+  const u=JSON.parse(localStorage.getItem('gf_unlocked')||'[]');
+  if(!u.includes(id))u.push(id);localStorage.setItem('gf_unlocked',JSON.stringify(u));
+}
 
 // ── Audio Manager ─────────────────────────────────────────────────────────────
 class AudioMgr{
@@ -495,6 +504,15 @@ class AudioMgr{
     this._osc(this.sfxBus,1047,'triangle',0.22,t,0.08);
     this._osc(this.sfxBus,1568,'triangle',0.14,t+0.06,0.12);
   }
+  splash(){
+    if(!this.ctx||this.muted)return;this.resume();
+    const t=this.ctx.currentTime;
+    [220,330,440,660].forEach((f,i)=>{
+      this._osc(this.sfxBus,f,'triangle',0.18,t+i*0.13,0.7);
+      this._osc(this.sfxBus,f*2,'sine',0.06,t+i*0.13+0.35,0.35);
+    });
+    this._osc(this.sfxBus,880,'triangle',0.22,t+0.65,0.9);
+  }
   startMusic(){}
   stopMusic(){}
   pauseMusic(){if(this.ctx&&this.ctx.state==='running')this.ctx.suspend();}
@@ -582,6 +600,54 @@ function addTap(el,fn){
   };
   el.addEventListener('touchend',go,{passive:false});
   el.addEventListener('click',go);
+}
+
+// ── SplashScene ───────────────────────────────────────────────────────────────
+class SplashScene extends Phaser.Scene{
+  constructor(){super('Splash');}
+  create(){
+    AUDIO.init();
+    let done=false;
+    const advance=()=>{if(done)return;done=true;OV.hide();this.scene.start('Menu');};
+    AUDIO.splash();
+    if(!document.getElementById('splash-anim-css')){
+      const s=document.createElement('style');s.id='splash-anim-css';
+      s.textContent=`
+        @keyframes gf-fly-in{0%{opacity:0;transform:translateY(-50px) scale(1.3)}100%{opacity:1;transform:translateY(0) scale(1)}}
+        @keyframes gf-tag-in{0%{opacity:0;transform:translateY(12px)}100%{opacity:1;transform:translateY(0)}}
+        @keyframes gf-spark{0%{opacity:1;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--sx),var(--sy)) scale(0)}}
+        @keyframes gf-skip-pulse{0%,100%{opacity:0.45}50%{opacity:0.9}}
+      `;
+      document.head.appendChild(s);
+    }
+    OV.show('ov-splash',
+      `<div style="text-align:center;font-family:'Press Start 2P',monospace">
+        <div style="font-size:clamp(30px,9.5vw,46px);color:#00ffff;text-shadow:0 0 28px #00ffff,4px 4px #0044ff;animation:gf-fly-in 0.8s cubic-bezier(0.34,1.56,0.64,1) both">GRAVITY</div>
+        <div style="font-size:clamp(30px,9.5vw,46px);color:#ff44ff;text-shadow:0 0 28px #ff44ff,4px 4px #880088;animation:gf-fly-in 0.9s 0.13s cubic-bezier(0.34,1.56,0.64,1) both">FLIPPER</div>
+        <div id="splash-sparks" style="position:relative;height:50px;margin:8px 0;overflow:visible"></div>
+        <div style="color:#aaaaaa;font-size:clamp(7px,1.9vw,9px);letter-spacing:2px;margin:6px 0 22px;animation:gf-tag-in 0.8s 0.55s ease-out both;opacity:0;animation-fill-mode:forwards">Defy gravity. Master the flip.</div>
+        <button class="ov-btn ov-btn-sm" id="ov-splash-skip" style="border-color:#333;color:#555;font-size:8px;min-height:34px;animation:gf-skip-pulse 1.5s 1s ease-in-out infinite">SKIP \u25b6</button>
+      </div>`,'rgba(0,0,10,1)');
+    const pd=document.getElementById('splash-sparks');
+    if(pd){
+      const cols=['#00ffff','#ff44ff','#ffdd00','#00ff88','#ff8800','#ffffff'];
+      for(let i=0;i<22;i++){
+        const p=document.createElement('div');
+        const col=cols[Math.floor(Math.random()*cols.length)];
+        const angle=Math.random()*Math.PI*2;
+        const dist=55+Math.random()*75;
+        const sx=(Math.cos(angle)*dist).toFixed(0)+'px';
+        const sy=(Math.sin(angle)*dist-5).toFixed(0)+'px';
+        const delay=(Math.random()*0.55).toFixed(2);
+        const dur=(0.5+Math.random()*0.55).toFixed(2);
+        const sz=(2+Math.random()*3).toFixed(0);
+        p.style.cssText=`position:absolute;left:50%;top:50%;width:${sz}px;height:${sz}px;background:${col};border-radius:50%;--sx:${sx};--sy:${sy};animation:gf-spark ${dur}s ${delay}s ease-out both`;
+        pd.appendChild(p);
+      }
+    }
+    addTap(document.getElementById('ov-splash-skip'),advance);
+    this.time.delayedCall(4000,advance);
+  }
 }
 
 // ── BootScene ─────────────────────────────────────────────────────────────────
@@ -710,7 +776,7 @@ class BootScene extends Phaser.Scene{
     g.generateTexture('fireball',12,12);
     g.destroy();
   }
-  create(){INPUT.init(this.sys.game.canvas);this.scene.start('Menu');}
+  create(){INPUT.init(this.sys.game.canvas);this.scene.start('Splash');}
 }
 
 // ── MenuScene ─────────────────────────────────────────────────────────────────
@@ -719,9 +785,14 @@ class MenuScene extends Phaser.Scene{
   create(){
     AUDIO.init();
     this._charIdx=CHARACTERS.findIndex(c=>c.id===(localStorage.getItem('gf_char')||'ship'));
-    if(this._charIdx<0)this._charIdx=0;
+    if(this._charIdx<0||!isUnlocked(CHARACTERS[this._charIdx].id)){
+      this._charIdx=CHARACTERS.findIndex(c=>c.unlock===0);if(this._charIdx<0)this._charIdx=0;
+    }
+    const _menuTracks=TRACKS.filter(t=>t.unlock!==undefined);
     this._trackIdx=TRACKS.findIndex(t=>t.id===(localStorage.getItem('gf_track')||'neon'));
-    if(this._trackIdx<0)this._trackIdx=0;
+    if(this._trackIdx<0||!_menuTracks.some(t=>TRACKS.indexOf(t)===this._trackIdx)||!isUnlocked(TRACKS[this._trackIdx].id)){
+      this._trackIdx=TRACKS.indexOf(_menuTracks.find(t=>t.unlock===0)||_menuTracks[0]);
+    }
     this.events.once('shutdown',()=>OV.hide());
     if(CHALLENGE.active){this._showChallengePopup(()=>this._buildMenu());}
     else{this._buildMenu();}
@@ -751,14 +822,23 @@ class MenuScene extends Phaser.Scene{
     const reach=localStorage.getItem('gf_level')||1;
     const savedName=localStorage.getItem('gf_name')||'';
     const nameValid=savedName.replace(/\s/g,'').length>=2;
+    const menuTracks=TRACKS.filter(t=>t.unlock!==undefined);
     const charHTML=CHARACTERS.map((ch,i)=>{
+      const locked=!isUnlocked(ch.id);
+      if(locked){
+        return `<button class="ch-btn" id="ch${i}" style="border-color:#333;color:#555">\uD83D\uDD12<br><span style="font-size:7px">${ch.name}</span><br><span style="color:#aa44ff;font-size:6px">${ch.unlock}\u25c6</span></button>`;
+      }
       const col='#'+ch.col.toString(16).padStart(6,'0');
       const sel=i===this._charIdx;
       return `<button class="ch-btn${sel?' sel':''}" id="ch${i}" style="${sel?'border-color:'+col+';':''}">${ch.name}<br><span style="color:#666;font-size:7px">${ch.desc}</span></button>`;
     }).join('');
-    const trackHTML=TRACKS.map((tr,i)=>{
-      const sel=i===this._trackIdx;
+    const trackHTML=menuTracks.map((tr,i)=>{
+      const locked=!isUnlocked(tr.id);
+      const sel=!locked&&TRACKS.indexOf(tr)===this._trackIdx;
       const c1=tr.previewGrad[0],c2=tr.previewGrad[1];
+      if(locked){
+        return `<button class="tr-btn" id="tr${i}" style="border-color:#333;"><div class="tr-swatch" style="background:linear-gradient(90deg,#222,#111)"></div>\uD83D\uDD12 ${tr.name}<br><span style="color:#aa44ff;font-size:6px">${tr.unlock}\u25c6</span></button>`;
+      }
       return `<button class="tr-btn${sel?' sel':''}" id="tr${i}" style="border-color:${sel?c1:'#334455'};"><div class="tr-swatch" style="background:linear-gradient(90deg,${c1},${c2})"></div>${tr.name}</button>`;
     }).join('');
     OV.show('ov-menu',
@@ -782,7 +862,7 @@ class MenuScene extends Phaser.Scene{
         <div class="ov-sub" style="color:#444;margin-top:4px">TAP = FLIP GRAVITY</div>
       </div>`,'rgba(0,0,10,0.96)');
     CHARACTERS.forEach((_,i)=>addTap(document.getElementById('ch'+i),()=>this._pickChar(i)));
-    TRACKS.forEach((_,i)=>addTap(document.getElementById('tr'+i),()=>this._pickTrack(i)));
+    menuTracks.forEach((tr,i)=>addTap(document.getElementById('tr'+i),()=>this._pickTrack(TRACKS.indexOf(tr))));
     const go=()=>{
       AUDIO.init();AUDIO.resume();
       const inp=document.getElementById('gf-name-inp');
@@ -811,19 +891,24 @@ class MenuScene extends Phaser.Scene{
     if(this.input.keyboard)this.input.keyboard.once('keydown-ENTER',go);
   }
   _pickChar(i){
+    if(!isUnlocked(CHARACTERS[i].id))return;
     this._charIdx=i;
     CHARACTERS.forEach((ch,j)=>{
       const b=document.getElementById('ch'+j);if(!b)return;
+      if(!isUnlocked(ch.id))return;
       const sel=j===i,col='#'+ch.col.toString(16).padStart(6,'0');
       b.className='ch-btn'+(sel?' sel':'');
       b.style.borderColor=sel?col:'#334455';
     });
   }
   _pickTrack(i){
+    if(!isUnlocked(TRACKS[i].id))return;
     this._trackIdx=i;
-    TRACKS.forEach((tr,j)=>{
+    const menuTracks=TRACKS.filter(t=>t.unlock!==undefined);
+    menuTracks.forEach((tr,j)=>{
       const b=document.getElementById('tr'+j);if(!b)return;
-      const sel=j===i;
+      if(!isUnlocked(tr.id))return;
+      const sel=TRACKS.indexOf(tr)===i;
       b.className='tr-btn'+(sel?' sel':'');
       b.style.borderColor=sel?tr.previewGrad[0]:'#334455';
     });
@@ -834,6 +919,14 @@ class MenuScene extends Phaser.Scene{
       {type:'magnet',name:'MAGNET',desc:'ATTRACTS COINS 6s',price:20,col:'#ffdd00'},
       {type:'slowmo',name:'SLOW-MO',desc:'SLOW SPEED 30% FOR 5s',price:25,col:'#44ccff'},
       {type:'doublecoins',name:'2X COINS',desc:'DOUBLES COINS FOR 8s',price:30,col:'#aa44ff'},
+    ];
+    const UNLOCK_CHARS=[
+      {id:'dart', name:'TRIANGLE',   price:50,  col:'#ff8844'},
+      {id:'orb',  name:'ORION',      price:100, col:'#ff44ff'},
+    ];
+    const UNLOCK_TRACKS=[
+      {id:'ice',   name:'ICE TUNNEL', price:75,  col:'#88ddff'},
+      {id:'ocean', name:'DEEP OCEAN', price:150, col:'#0088dd'},
     ];
     const renderShop=()=>{
       const balance=getPCoins();
@@ -851,11 +944,38 @@ class MenuScene extends Phaser.Scene{
           <button class="ov-btn ov-btn-sm" id="buy-${item.type}" style="min-height:34px;width:72px;font-size:8px;${btnStyle}">${btnLabel}</button>
         </div>`;
       }).join('');
+      const charUnlockRows=UNLOCK_CHARS.map(item=>{
+        const owned=isUnlocked(item.id);
+        const canBuy=!owned&&balance>=item.price;
+        const btnStyle=owned?'border-color:#555;color:#555':canBuy?`border-color:${item.col};color:${item.col}`:'border-color:#662200;color:#662200';
+        const btnLabel=owned?'OWNED':canBuy?'UNLOCK':'NO COINS';
+        return `<div style="display:flex;align-items:center;padding:6px 2px;border-bottom:1px solid #1a1a2a;gap:6px">
+          <div style="flex:1;text-align:left"><div style="color:${item.col};font-size:8px">${item.name}</div><div style="color:#555;font-size:7px">CHARACTER UNLOCK</div></div>
+          <span style="color:#ffdd00;font-size:9px;white-space:nowrap">${item.price}\u25c6</span>
+          <button class="ov-btn ov-btn-sm" id="unlock-char-${item.id}" style="min-height:34px;width:80px;font-size:7px;${btnStyle}">${btnLabel}</button>
+        </div>`;
+      }).join('');
+      const trackUnlockRows=UNLOCK_TRACKS.map(item=>{
+        const owned=isUnlocked(item.id);
+        const canBuy=!owned&&balance>=item.price;
+        const btnStyle=owned?'border-color:#555;color:#555':canBuy?`border-color:${item.col};color:${item.col}`:'border-color:#662200;color:#662200';
+        const btnLabel=owned?'OWNED':canBuy?'UNLOCK':'NO COINS';
+        return `<div style="display:flex;align-items:center;padding:6px 2px;border-bottom:1px solid #1a1a2a;gap:6px">
+          <div style="flex:1;text-align:left"><div style="color:${item.col};font-size:8px">${item.name}</div><div style="color:#555;font-size:7px">WORLD UNLOCK</div></div>
+          <span style="color:#ffdd00;font-size:9px;white-space:nowrap">${item.price}\u25c6</span>
+          <button class="ov-btn ov-btn-sm" id="unlock-track-${item.id}" style="min-height:34px;width:80px;font-size:7px;${btnStyle}">${btnLabel}</button>
+        </div>`;
+      }).join('');
       OV.show('ov-shop',
         `<div class="ov-wrap">
           <div class="ov-title" style="color:#aa44ff;font-size:clamp(14px,4.5vw,20px)">\uD83D\uDED2 SHOP</div>
           <div class="ov-sub" style="color:#ffdd00;margin-bottom:6px">\u25c6 BALANCE: ${balance}</div>
+          <div class="ov-sub" style="color:#aa44ff;margin:4px 0 2px;text-align:left;font-size:7px">POWER-UPS</div>
           <div style="width:100%;font-family:'Press Start 2P',monospace;font-size:8px">${rows}</div>
+          <div class="ov-sub" style="color:#ff8844;margin:8px 0 2px;text-align:left;font-size:7px">CHARACTER UNLOCKS</div>
+          <div style="width:100%;font-family:'Press Start 2P',monospace;font-size:8px">${charUnlockRows}</div>
+          <div class="ov-sub" style="color:#88ddff;margin:8px 0 2px;text-align:left;font-size:7px">WORLD UNLOCKS</div>
+          <div style="width:100%;font-family:'Press Start 2P',monospace;font-size:8px">${trackUnlockRows}</div>
           <button class="ov-btn" id="ov-shop-back" style="margin-top:14px;border-color:#00ffff;color:#00ffff">\u25c4 BACK</button>
         </div>`,'rgba(0,0,12,0.97)');
       ITEMS.forEach(item=>{
@@ -863,6 +983,20 @@ class MenuScene extends Phaser.Scene{
         if(owned<3&&balance>=item.price){
           addTap(document.getElementById('buy-'+item.type),()=>{
             if(spendPCoins(item.price)){addToInventory(item.type);renderShop();}
+          });
+        }
+      });
+      UNLOCK_CHARS.forEach(item=>{
+        if(!isUnlocked(item.id)&&balance>=item.price){
+          addTap(document.getElementById('unlock-char-'+item.id),()=>{
+            if(spendPCoins(item.price)){doUnlock(item.id);renderShop();}
+          });
+        }
+      });
+      UNLOCK_TRACKS.forEach(item=>{
+        if(!isUnlocked(item.id)&&balance>=item.price){
+          addTap(document.getElementById('unlock-track-'+item.id),()=>{
+            if(spendPCoins(item.price)){doUnlock(item.id);renderShop();}
           });
         }
       });
@@ -909,7 +1043,7 @@ class GameScene extends Phaser.Scene{
     this.alive=true; this.gameStarted=false; this.levelDone=false;
     this.distTraveled=0; this.flipCooldown=0;
     this.coinsCollected=0; this.levelScore=0; this.cameraShake=0;
-    this.nextObstacleWorldX=Math.floor(this.lvl.distance*0.20)+(W-PLAYER_X); this.safetyCoinsSpawned=false; this.trailTimer=0;
+    this.nextObstacleWorldX=Math.floor(this.lvl.distance*0.25)+(W-PLAYER_X); this.safetyCoinsSpawned=false; this.trailTimer=0;
     this._nearMissObstacles=new Set(); this._closeCallCooldown=0;
     this._inputBuf=0; this._ambientT=0; this._shockwave=null;
     this._challengeBeat=false;
@@ -918,6 +1052,8 @@ class GameScene extends Phaser.Scene{
     this.doubleCoinsActive=false;
     this._pendingPowerup=this._startPowerup||null;
     this._finaleSpawned=false;
+    this._zoneCoinWXs=[this.lvl.distance*0.28,this.lvl.distance*0.55,this.lvl.distance*0.78];
+    this._zoneCoinPlaced=[false,false,false];
     this._laserGapToggle=true;
     this._lastLaserWorldX=-9999;
     this._levelFlips=0; this._rareCoins=0;
@@ -1524,7 +1660,6 @@ class GameScene extends Phaser.Scene{
       const b=this.add.image(sx,y+bh/2,'block').setDepth(6).setTint(this.theme.blockTint);
       b.obstacleType='barrier';this.obstacles.add(b);
     }
-    this._placeCoin(sx-110,gapY+gapH/2,wx-110);
   }
 
   _doSpikes(sx,wx){
@@ -1541,7 +1676,6 @@ class GameScene extends Phaser.Scene{
       const s=this.add.image(sx+i*sp,TUNNEL_BOTTOM-6,'spike_up').setDepth(6).setTint(this.theme.spikeTint);
       s.obstacleType='spike';this.obstacles.add(s);
     }
-    this._placeCoin(sx-110,H/2,wx-110);
   }
 
   _doMoving(sx,wx){
@@ -1553,7 +1687,6 @@ class GameScene extends Phaser.Scene{
     b.moveSpeed=lerp(isIce?150:60,isIce?260:170,this.levelIndex/7)*(Math.random()>0.5?1:-1);
     b.minY=TUNNEL_TOP+24;b.maxY=TUNNEL_BOTTOM-24;
     this.obstacles.add(b);
-    this._placeCoin(sx-130,H/2,wx-130);
   }
 
   _doLaser(sx,wx){
@@ -1574,7 +1707,39 @@ class GameScene extends Phaser.Scene{
       gfx,txt:dangerTxt,x:sx,warnDur,onDur,offDur,totalPeriod,
       t:Math.random()*totalPeriod,_lastPhase:'off',_buzzTimer:0,gapTop,
     });
-    this._placeCoin(sx-80,H/2,wx-80);
+  }
+
+  _placeZoneCoin(wx){
+    const sx=this._w2s(wx);
+    const midY=H/2;
+    const candidates=[midY,midY-100,midY+100,midY-160,midY+160,TUNNEL_TOP+120,TUNNEL_BOTTOM-120];
+    for(const cy of candidates){
+      const clamped=clamp(cy,TUNNEL_TOP+110,TUNNEL_BOTTOM-110);
+      let blocked=false;
+      for(const obs of this.obstacles.getChildren()){
+        if(Math.abs(obs.x-sx)<200&&Math.abs(obs.y-clamped)<200){blocked=true;break;}
+      }
+      if(!blocked){for(const laser of this.laserList){if(Math.abs(laser.x-sx)<200){blocked=true;break;}}}
+      if(!blocked){for(const c of this.coins.getChildren()){if(Math.abs(c.x-sx)<80&&Math.abs(c.y-clamped)<80){blocked=true;break;}}}
+      if(!blocked){
+        const r=Math.random();
+        let tex='coin',isRare=false,isPowerup=false,powerupType=null;
+        if(r<0.08&&!this._powerup){
+          isPowerup=true;const types=['shield','magnet','slowmo','doublecoins'];
+          powerupType=types[Math.floor(Math.random()*types.length)];
+          const texMap={shield:'powerup_shield',magnet:'powerup_magnet',slowmo:'powerup_slowmo',doublecoins:'powerup_doublecoins'};
+          tex=texMap[powerupType];
+        } else if(r<0.22){isRare=true;tex='coin_rare';}
+        const c=this.add.image(sx,clamped,tex).setDepth(7).setScale(isPowerup?1.7:isRare?1.6:1.5);
+        c.bobOffset=Math.random()*Math.PI*2;c.worldX=wx;
+        c.isRare=isRare;c.isPowerup=isPowerup;c.powerupType=powerupType;
+        this.coins.add(c);return;
+      }
+    }
+    // Fallback: place at midY unchecked
+    const c=this.add.image(sx,midY,'coin').setDepth(7).setScale(1.5);
+    c.bobOffset=Math.random()*Math.PI*2;c.worldX=wx;c.isRare=false;c.isPowerup=false;c.powerupType=null;
+    this.coins.add(c);
   }
 
   _isCoinBlocked(sx,sy,isPowerup){
@@ -1717,7 +1882,7 @@ class GameScene extends Phaser.Scene{
         this._currentDuration=1.0+Math.random()*0.8;
         this._floatText(W/2,H/2-28,this._currentBoost>0?'\u27a1 CURRENT':'\u2b05 CURRENT','#00aaff');
       }
-      if(this._currentDuration>0){this._currentDuration-=dt;this.speed+=this._currentBoost;}
+      if(this._currentDuration>0){this._currentDuration-=dt;}
     }
     // Sky: wind drifts player vertically
     if(style==='sky'){
@@ -1729,12 +1894,6 @@ class GameScene extends Phaser.Scene{
         this._floatText(W/2,H/2-28,this._windForce>0?'\u2b07 WIND':'\u2b06 WIND','#aaddff');
       }
       if(this._windDuration>0){this._windDuration-=dt;if(this._windDuration<=0)this._windForce=0;}
-    }
-    // Factory: touching walls applies speed boost/penalty
-    if(style==='factory'){
-      const ph2=this.player.displayHeight/2;
-      if(this.player.y-ph2<TUNNEL_TOP+26)this.speed=Math.min(this.speed+90*dt,this.lvl.endSpeed*1.35);
-      if(this.player.y+ph2>TUNNEL_BOTTOM-26)this.speed=Math.max(this.speed-80*dt,this.lvl.startSpeed*0.65);
     }
     // Gentle gravity (ocean has reduced gravity)
     const gravMult=style==='ocean'?0.62:1.0;
@@ -1883,7 +2042,7 @@ class GameScene extends Phaser.Scene{
       if(spawnWX>=this.nextObstacleWorldX&&this.nextObstacleWorldX<clearBefore){
         this._spawnCluster(this.nextObstacleWorldX);
         const sp=isIntense?Math.floor(this.lvl.spacing*0.68):this.lvl.spacing;
-        let nextGap=Phaser.Math.Between(Math.floor(sp*0.75),Math.floor(sp*1.45));
+        let nextGap=Math.max(350,Phaser.Math.Between(Math.floor(sp*0.75),Math.floor(sp*1.45)));
         // After spawn: if still under minCount, cap gap so remaining obstacles fit
         const minCount=this.lvl.minCount||0;
         const stillNeeded=minCount-this._spawnCount;
@@ -1904,6 +2063,13 @@ class GameScene extends Phaser.Scene{
         const sx=this._w2s(wx);
         if(sx>PLAYER_X+60)this._spawnCluster(wx);
       });
+    }
+    // Zone coins: 3 coins spaced evenly across the level
+    for(let z=0;z<3;z++){
+      if(!this._zoneCoinPlaced[z]&&this._w2s(this._zoneCoinWXs[z])<=W+60){
+        this._zoneCoinPlaced[z]=true;
+        this._placeZoneCoin(this._zoneCoinWXs[z]);
+      }
     }
     // Lava fireballs
     if(this.theme.style==='lava'){
@@ -2065,8 +2231,6 @@ class GameScene extends Phaser.Scene{
   _doGravityGate(sx,wx){
     const gfx=this.add.graphics().setDepth(7);
     this.gateList.push({gfx,x:sx,triggered:false,rippleR:undefined,rippleA:0});
-    // Coin placed AFTER the gate so player has space to recover first
-    this._placeCoin(sx+130,H/2,wx+130);
   }
 
   _drawGate(gate,time){
@@ -2436,7 +2600,7 @@ class LeaderboardScene extends Phaser.Scene{
 new Phaser.Game({
   type:Phaser.AUTO,width:W,height:H,backgroundColor:'#000011',parent:document.body,
   scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},
-  scene:[BootScene,MenuScene,LeaderboardScene,GameScene,LevelCompleteScene,LevelFailedScene,DeathScene],
+  scene:[BootScene,SplashScene,MenuScene,LeaderboardScene,GameScene,LevelCompleteScene,LevelFailedScene,DeathScene],
   fps:{target:60,forceSetTimeOut:false},
   render:{pixelArt:true,antialias:false}
 });
