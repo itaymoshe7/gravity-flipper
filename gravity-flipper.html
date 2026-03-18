@@ -1771,7 +1771,7 @@ class GameScene extends Phaser.Scene{
     const totalPeriod=warnDur+onDur+offDur;
     this.laserList.push({
       gfx,txt:dangerTxt,x:sx,warnDur,onDur,offDur,totalPeriod,
-      t:Math.random()*totalPeriod,_lastPhase:'off',_buzzTimer:0,gapTop,
+      t:0,activated:false,_lastPhase:'off',_buzzTimer:0,gapTop,
     });
   }
 
@@ -2009,8 +2009,13 @@ class GameScene extends Phaser.Scene{
     for(let i=this.laserList.length-1;i>=0;i--){
       const laser=this.laserList[i];
       laser.x-=this.speed*dt;
-      laser.t+=dt;
       if(laser.x<-40){laser.gfx.destroy();if(laser.txt)laser.txt.destroy();this.laserList.splice(i,1);continue;}
+      // Only start cycle when laser enters the visible screen (player within ~600px)
+      if(!laser.activated){
+        if(laser.x<=W){laser.activated=true;}
+        else{laser.gfx.clear();continue;}
+      }
+      laser.t+=dt;
       const cycle=laser.t%laser.totalPeriod;
       const phaseStr=cycle<laser.warnDur?'warn':cycle<laser.warnDur+laser.onDur?'on':'off';
       // Play charge sound when transitioning OFF → WARN
@@ -2402,7 +2407,6 @@ class GameScene extends Phaser.Scene{
     else if(type==='slowmo')AUDIO.slowmoGet();
     else if(type==='doublecoins'){
       this.doubleCoinsActive=true;
-      console.log('[GravityFlipper] doubleCoinsActive = true (8s)');
       AUDIO.doubleCoinsGet();
       const req=this.lvl.required;const met=this.coinsCollected>=req;
       this.coinTxt.setText(`\u25c6 ${this.coinsCollected}/${req} 2\u00d7`).setColor(met?'#00ff88':'#cc88ff');
