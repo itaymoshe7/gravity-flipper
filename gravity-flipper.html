@@ -1100,8 +1100,6 @@ class GameScene extends Phaser.Scene{
         }
         this._coinSchedule.push(Math.max(coinStartWX,Math.min(coinEndWX,wx)));
       }
-      this._obstacleScheduleIdx=0;
-      this._coinScheduleIdx=0;
     }
     this._laserGapToggle=true;
     this._lastLaserWorldX=-9999;
@@ -1109,7 +1107,6 @@ class GameScene extends Phaser.Scene{
     // Hearts / extra lives
     this._hearts=1; this._maxHearts=2;
     this._invincible=false; this._invincibleTimer=0;
-    this._heartPickupSpawned=false;
     this._heartPickupWX=(this.levelIndex>=4)?Math.floor(this.lvl.distance*0.70):-1;
     // Lava mechanics (falling rocks only)
     this._rocks=[];
@@ -1129,6 +1126,13 @@ class GameScene extends Phaser.Scene{
     this.coins=this.add.group();
     this.particles=this.add.group();
     this.stars=this.add.group();
+
+    // Pre-place ALL obstacles and coins at level start (distTraveled=0).
+    // Initial screen X = PLAYER_X + worldX. They scroll into view as distTraveled increases.
+    // This guarantees obstacles are always AHEAD of the player and never past the finish line.
+    for(const owx of this._obstacleSchedule) this._spawnCluster(owx);
+    for(const cwx of this._coinSchedule) this._placeZoneCoin(cwx);
+    if(this._heartPickupWX>0) this._spawnHeartPickup(this._heartPickupWX);
 
     this._buildStars(); this._buildWallGfx(); this._buildPlayer();
     this._buildUI(); this._buildFinishLine(); this._buildInputs();
@@ -1769,9 +1773,12 @@ class GameScene extends Phaser.Scene{
     // Fairer timing: 1s warn, 0.6s deadly, 1.5-2s off
     const warnDur=1.0, onDur=0.6, offDur=lerp(2.0,1.5,d);
     const totalPeriod=warnDur+onDur+offDur;
+    // activationX: laser starts warn phase when it reaches this screen X,
+    // so the deadly phase ends exactly as the laser passes the player (PLAYER_X).
+    const activationX=PLAYER_X+(warnDur+onDur)*this.speed;
     this.laserList.push({
       gfx,txt:dangerTxt,x:sx,warnDur,onDur,offDur,totalPeriod,
-      t:0,activated:false,_lastPhase:'off',_buzzTimer:0,gapTop,
+      t:0,activated:false,activationX,_lastPhase:'off',_buzzTimer:0,gapTop,
     });
   }
 
@@ -2010,9 +2017,9 @@ class GameScene extends Phaser.Scene{
       const laser=this.laserList[i];
       laser.x-=this.speed*dt;
       if(laser.x<-40){laser.gfx.destroy();if(laser.txt)laser.txt.destroy();this.laserList.splice(i,1);continue;}
-      // Only start cycle when laser enters the visible screen (player within ~600px)
+      // Activate when laser reaches activationX: ensures deadly phase hits player at PLAYER_X
       if(!laser.activated){
-        if(laser.x<=W){laser.activated=true;}
+        if(laser.x<=laser.activationX){laser.activated=true;}
         else{laser.gfx.clear();continue;}
       }
       laser.t+=dt;
@@ -2109,27 +2116,6 @@ class GameScene extends Phaser.Scene{
       if(c.x<-30)this.coins.remove(c,true,true);
     }
 
-    // Scheduled obstacle spawn: pre-computed evenly distributed positions (20%–85%)
-    if(this._obstacleScheduleIdx<this._obstacleSchedule.length){
-      const wx=this._obstacleSchedule[this._obstacleScheduleIdx];
-      if(this.distTraveled+(W-PLAYER_X)+100>=wx){
-        this._spawnCluster(wx);
-        this._obstacleScheduleIdx++;
-      }
-    }
-    // Scheduled coin: midpoint between consecutive obstacles
-    if(this._coinScheduleIdx<this._coinSchedule.length){
-      const cwx=this._coinSchedule[this._coinScheduleIdx];
-      if(this._w2s(cwx)<=W+80){
-        this._placeZoneCoin(cwx);
-        this._coinScheduleIdx++;
-      }
-    }
-    // Heart pickup spawn (levels 5+, once per level)
-    if(this._heartPickupWX>0&&!this._heartPickupSpawned&&this._w2s(this._heartPickupWX)<=W+60){
-      this._heartPickupSpawned=true;
-      this._spawnHeartPickup(this._heartPickupWX);
-    }
     // Lava cave rising lava + falling rocks
     if(this._lavaGfx&&this.gameStarted){
       if(this._updateLavaMechanics(dt,time))return;
