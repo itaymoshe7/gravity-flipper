@@ -247,52 +247,52 @@ const CHARACTERS=[
 // weights: probability distribution for obstacle type selection each spawn.
 // Coins placed = required + 3 buffer.
 const LEVELS=[
-  // 1 — gentle intro: barriers only, very wide gaps, slow
-  {distance:1800,startSpeed:185,endSpeed:205,gap:230,spacing:480,minCount:3,
+  // 1 — gentle intro: barriers only, very wide gaps, constant 180 px/s
+  {distance:1800,startSpeed:180,endSpeed:180,gap:220,spacing:580,minCount:3,
    weights:{barrier:1.0},
    coins:4,required:1,hint:'FLIP GRAVITY TO DODGE'},
-  // 2 — introduce moving obstacles (slow)
-  {distance:2200,startSpeed:215,endSpeed:238,gap:215,spacing:420,minCount:4,
+  // 2 — introduce moving obstacles
+  {distance:2200,startSpeed:200,endSpeed:200,gap:210,spacing:520,minCount:4,
    weights:{barrier:0.65,moving:0.35},
    coins:4,required:1,hint:'MOVING OBSTACLES!'},
-  // 3 — spikes enter the mix
-  {distance:2800,startSpeed:248,endSpeed:275,gap:198,spacing:360,minCount:5,
+  // 3 — spikes enter
+  {distance:2800,startSpeed:220,endSpeed:220,gap:195,spacing:460,minCount:4,
    weights:{barrier:0.42,spike:0.36,moving:0.22},
    coins:5,required:2,hint:'WATCH THE SPIKES'},
-  // 4 — patterns and timing, more spikes
-  {distance:3200,startSpeed:282,endSpeed:314,gap:180,spacing:310,minCount:6,
+  // 4 — patterns and timing
+  {distance:3200,startSpeed:240,endSpeed:240,gap:185,spacing:400,minCount:5,
    weights:{barrier:0.25,spike:0.45,moving:0.30},
    coins:5,required:2,hint:'TIMING IS EVERYTHING'},
-  // 5 — lasers introduced gently (22% chance)
-  {distance:3800,startSpeed:322,endSpeed:360,gap:162,spacing:295,minCount:6,
+  // 5 — lasers introduced
+  {distance:3800,startSpeed:260,endSpeed:260,gap:175,spacing:360,minCount:5,
    weights:{barrier:0.20,spike:0.30,moving:0.28,laser:0.22},
    coins:6,required:3,hint:'LASERS AHEAD!'},
-  // 6 — gravity gates debut + lasers more frequent
-  {distance:4300,startSpeed:364,endSpeed:405,gap:145,spacing:258,minCount:7,
+  // 6 — gravity gates debut
+  {distance:4300,startSpeed:280,endSpeed:280,gap:160,spacing:320,minCount:6,
    weights:{barrier:0.12,spike:0.22,moving:0.22,laser:0.28,gravitygate:0.16},
    coins:6,required:3,hint:'GRAVITY GATES ACTIVE'},
-  // 7 — gauntlet unlocked, gravity gates persist
-  {distance:5000,startSpeed:410,endSpeed:453,gap:128,spacing:224,minCount:8,
+  // 7 — gauntlet unlocked
+  {distance:5000,startSpeed:300,endSpeed:300,gap:145,spacing:285,minCount:6,
    weights:{barrier:0.08,spike:0.18,moving:0.18,laser:0.24,gauntlet:0.18,gravitygate:0.14},
    coins:7,required:4,hint:'GAUNTLET MODE'},
-  // 8 — expert density begins
-  {distance:5500,startSpeed:458,endSpeed:500,gap:113,spacing:196,minCount:8,
+  // 8 — expert density
+  {distance:5500,startSpeed:320,endSpeed:320,gap:135,spacing:255,minCount:7,
    weights:{barrier:0.06,spike:0.15,moving:0.15,laser:0.27,gauntlet:0.25,gravitygate:0.12},
    coins:7,required:4,hint:'MAXIMUM INTENSITY'},
-  // 9
-  {distance:6100,startSpeed:505,endSpeed:548,gap:98,spacing:170,minCount:8,
+  // 9 — capped at 340 px/s
+  {distance:6100,startSpeed:340,endSpeed:340,gap:125,spacing:228,minCount:7,
    weights:{barrier:0.06,spike:0.13,moving:0.13,laser:0.30,gauntlet:0.28,gravitygate:0.10},
    coins:8,required:5,hint:'DEEP PRESSURE'},
   // 10
-  {distance:6600,startSpeed:553,endSpeed:597,gap:86,spacing:150,minCount:8,
+  {distance:6600,startSpeed:340,endSpeed:340,gap:118,spacing:205,minCount:8,
    weights:{barrier:0.05,spike:0.11,moving:0.11,laser:0.33,gauntlet:0.31,gravitygate:0.09},
    coins:8,required:5,hint:'STORM INCOMING'},
   // 11
-  {distance:7200,startSpeed:602,endSpeed:646,gap:75,spacing:134,minCount:8,
+  {distance:7200,startSpeed:340,endSpeed:340,gap:112,spacing:185,minCount:8,
    weights:{barrier:0.04,spike:0.10,moving:0.10,laser:0.355,gauntlet:0.335,gravitygate:0.07},
    coins:9,required:6,hint:'FACTORY STORM'},
   // 12
-  {distance:7800,startSpeed:650,endSpeed:696,gap:65,spacing:118,minCount:8,
+  {distance:7800,startSpeed:340,endSpeed:340,gap:108,spacing:168,minCount:8,
    weights:{barrier:0.04,spike:0.09,moving:0.09,laser:0.365,gauntlet:0.345,gravitygate:0.06},
    coins:9,required:6,hint:'BEYOND LIMITS'},
 ];
@@ -909,7 +909,7 @@ class GameScene extends Phaser.Scene{
     this.alive=true; this.gameStarted=false; this.levelDone=false;
     this.distTraveled=0; this.flipCooldown=0;
     this.coinsCollected=0; this.levelScore=0; this.cameraShake=0;
-    this.nextObstacleWorldX=380; this.safetyCoinsSpawned=false; this.trailTimer=0;
+    this.nextObstacleWorldX=Math.floor(this.lvl.distance*0.20)+(W-PLAYER_X); this.safetyCoinsSpawned=false; this.trailTimer=0;
     this._nearMissObstacles=new Set(); this._closeCallCooldown=0;
     this._inputBuf=0; this._ambientT=0; this._shockwave=null;
     this._challengeBeat=false;
@@ -1524,7 +1524,7 @@ class GameScene extends Phaser.Scene{
       const b=this.add.image(sx,y+bh/2,'block').setDepth(6).setTint(this.theme.blockTint);
       b.obstacleType='barrier';this.obstacles.add(b);
     }
-    this._placeCoin(sx-40,gapY+gapH/2,wx-40);
+    this._placeCoin(sx-110,gapY+gapH/2,wx-110);
   }
 
   _doSpikes(sx,wx){
@@ -1541,7 +1541,7 @@ class GameScene extends Phaser.Scene{
       const s=this.add.image(sx+i*sp,TUNNEL_BOTTOM-6,'spike_up').setDepth(6).setTint(this.theme.spikeTint);
       s.obstacleType='spike';this.obstacles.add(s);
     }
-    this._placeCoin(sx-35,H/2,wx-35);
+    this._placeCoin(sx-110,H/2,wx-110);
   }
 
   _doMoving(sx,wx){
@@ -1553,7 +1553,7 @@ class GameScene extends Phaser.Scene{
     b.moveSpeed=lerp(isIce?150:60,isIce?260:170,this.levelIndex/7)*(Math.random()>0.5?1:-1);
     b.minY=TUNNEL_TOP+24;b.maxY=TUNNEL_BOTTOM-24;
     this.obstacles.add(b);
-    this._placeCoin(sx-70,H/2,wx-70);
+    this._placeCoin(sx-130,H/2,wx-130);
   }
 
   _doLaser(sx,wx){
@@ -1578,8 +1578,8 @@ class GameScene extends Phaser.Scene{
   }
 
   _isCoinBlocked(sx,sy,isPowerup){
-    sy=clamp(sy,TUNNEL_TOP+26,TUNNEL_BOTTOM-26);
-    const buf=isPowerup?36:28;
+    sy=clamp(sy,TUNNEL_TOP+100,TUNNEL_BOTTOM-100);
+    const buf=isPowerup?70:55;
     // Blocked by solid obstacle
     for(const obs of this.obstacles.getChildren()){
       if(Math.abs(obs.x-sx)<obs.displayWidth/2+buf&&Math.abs(obs.y-sy)<obs.displayHeight/2+buf)return true;
@@ -1610,9 +1610,9 @@ class GameScene extends Phaser.Scene{
     }
     // Try the requested Y, then two alternative Y positions before giving up
     const midY=H/2;
-    const candidates=[sy,midY,midY+(sy<midY?60:-60)];
+    const candidates=[sy,midY,midY+(sy<midY?80:-80)];
     for(const cy of candidates){
-      const clamped=clamp(cy,TUNNEL_TOP+26,TUNNEL_BOTTOM-26);
+      const clamped=clamp(cy,TUNNEL_TOP+100,TUNNEL_BOTTOM-100);
       if(!this._isCoinBlocked(sx,clamped,isPowerup)){
         const c=this.add.image(sx,clamped,tex).setDepth(7).setScale(isPowerup?1.7:isRare?1.6:1.5);
         c.bobOffset=Math.random()*Math.PI*2; c.worldX=wx;
@@ -1631,7 +1631,7 @@ class GameScene extends Phaser.Scene{
     if(this.unlockedMsg.alpha>0)this.unlockedMsg.setAlpha(Math.max(0,this.unlockedMsg.alpha-0.025));
     if(!this.safetyCoinsSpawned&&this.distTraveled>this.lvl.distance-600){
       this.safetyCoinsSpawned=true;
-      [{wx:this.lvl.distance-340,sy:H/2},{wx:this.lvl.distance-230,sy:TUNNEL_TOP+55},{wx:this.lvl.distance-130,sy:TUNNEL_BOTTOM-55}]
+      [{wx:this.lvl.distance-340,sy:H/2},{wx:this.lvl.distance-230,sy:TUNNEL_TOP+130},{wx:this.lvl.distance-130,sy:TUNNEL_BOTTOM-130}]
       .forEach(p=>this._placeCoin(this._w2s(p.wx),p.sy,p.wx));
     }
     this.finishPulse=(this.finishPulse+0.08)%(Math.PI*2);
@@ -1691,10 +1691,9 @@ class GameScene extends Phaser.Scene{
       if(this.flipCooldown<=0)this._doFlip();
     }
     const prog=clamp(this.distTraveled/this.lvl.distance,0,1);
-    // Non-linear: ease in slow, ramp hard in final 30%
+    // Constant speed per level — no ramping within a level
     const isIntense=prog>0.70;
-    const baseSpeed=lerp(this.lvl.startSpeed*0.88,this.lvl.endSpeed,prog);
-    this.speed=baseSpeed*(isIntense?1+(prog-0.70)*0.65:1);
+    this.speed=this.lvl.startSpeed;
     if(this._powerup?.type==='slowmo') this.speed*=0.70;
     this.distTraveled+=this.speed*dt;
     this.levelScore=Math.floor(this.distTraveled/8);
@@ -2122,8 +2121,9 @@ class GameScene extends Phaser.Scene{
   }
 
   _aabb(a,b){
-    // Player hitbox ≈60% of sprite for "barely escaped" feel
-    const aw=a.displayWidth*0.28,ah=a.displayHeight*0.28,bw=b.displayWidth*0.50,bh=b.displayHeight*0.50;
+    // Player hitbox ≈28% of sprite; obstacles 55% + 3px padding for edge registration
+    const aw=a.displayWidth*0.28,ah=a.displayHeight*0.28;
+    const bw=b.displayWidth*0.55+3,bh=b.displayHeight*0.55+3;
     return Math.abs(a.x-b.x)<(aw+bw)/2&&Math.abs(a.y-b.y)<(ah+bh)/2;
   }
 
@@ -2273,7 +2273,7 @@ class GameScene extends Phaser.Scene{
     const fs=this.totalScore+this.levelScore;
     const best=parseInt(localStorage.getItem('gf_best')||'0');
     if(fs>best)localStorage.setItem('gf_best',fs);
-    this.time.delayedCall(1000,()=>{AUDIO.stopMusic();this.scene.start('Death',{levelIndex:this.levelIndex,score:fs,coinsCollected:this.coinsCollected});});
+    this.time.delayedCall(1000,()=>{AUDIO.stopMusic();this.scene.start('Death',{levelIndex:this.levelIndex,score:fs,prevScore:this.totalScore,coinsCollected:this.coinsCollected});});
   }
 }
 
@@ -2362,7 +2362,7 @@ class LevelFailedScene extends Phaser.Scene{
 // ── DeathScene ────────────────────────────────────────────────────────────────
 class DeathScene extends Phaser.Scene{
   constructor(){super('Death');}
-  init(d){this.levelIndex=d.levelIndex||0;this.finalScore=d.score||0;this.coins=d.coinsCollected||0;}
+  init(d){this.levelIndex=d.levelIndex||0;this.finalScore=d.score||0;this.prevScore=d.prevScore||0;this.coins=d.coinsCollected||0;}
   create(){
     AUDIO.init();AUDIO.resume();
     addPCoins(this.coins);
@@ -2395,7 +2395,7 @@ class DeathScene extends Phaser.Scene{
     this.events.once('shutdown',()=>OV.hide());
     this.time.delayedCall(400,()=>{
       let going=false;
-      const go=(li)=>{if(going)return;going=true;OV.hide();this.scene.start('Game',{levelIndex:li,totalScore:0});};
+      const go=(li)=>{if(going)return;going=true;OV.hide();this.scene.start('Game',{levelIndex:li,totalScore:this.prevScore});};
       const home=()=>{if(going)return;going=true;OV.hide();AUDIO.stopMusic();this.scene.start('Menu');};
       addTap(document.getElementById('ov-retry'),()=>go(this.levelIndex));
       addTap(document.getElementById('ov-home'),home);
