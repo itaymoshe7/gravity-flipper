@@ -1043,7 +1043,7 @@ class GameScene extends Phaser.Scene{
     this.alive=true; this.gameStarted=false; this.levelDone=false;
     this.distTraveled=0; this.flipCooldown=0;
     this.coinsCollected=0; this.levelScore=0; this.cameraShake=0;
-    this.nextObstacleWorldX=Math.floor(this.lvl.distance*0.25)+(W-PLAYER_X); this.safetyCoinsSpawned=false; this.trailTimer=0;
+    this.safetyCoinsSpawned=false; this.trailTimer=0;
     this._nearMissObstacles=new Set(); this._closeCallCooldown=0;
     this._inputBuf=0; this._ambientT=0; this._shockwave=null;
     this._challengeBeat=false;
@@ -1051,9 +1051,31 @@ class GameScene extends Phaser.Scene{
     this._powerup=null; // {type,timer,duration} or null
     this.doubleCoinsActive=false;
     this._pendingPowerup=this._startPowerup||null;
-    this._finaleSpawned=false;
-    this._zoneCoinWXs=[this.lvl.distance*0.28,this.lvl.distance*0.55,this.lvl.distance*0.78];
-    this._zoneCoinPlaced=[false,false,false];
+    // Pre-compute evenly distributed obstacle positions: 20%–85% of level
+    {
+      const d=this.lvl.distance, n=Math.max(1,this.lvl.minCount||2);
+      const startWX=d*0.20, endWX=d*0.85;
+      this._obstacleSchedule=[];
+      if(n===1){
+        this._obstacleSchedule.push(Math.floor((startWX+endWX)/2));
+      } else {
+        const step=(endWX-startWX)/(n-1);
+        for(let i=0;i<n;i++) this._obstacleSchedule.push(Math.floor(startWX+i*step));
+      }
+      // Enforce 400px minimum between consecutive obstacles
+      for(let i=1;i<this._obstacleSchedule.length;i++){
+        if(this._obstacleSchedule[i]-this._obstacleSchedule[i-1]<400)
+          this._obstacleSchedule[i]=this._obstacleSchedule[i-1]+400;
+      }
+      // Coin at midpoint between each consecutive pair (shifted slightly forward to clear obstacle A)
+      this._coinSchedule=[];
+      for(let i=0;i<this._obstacleSchedule.length-1;i++){
+        const mid=Math.floor((this._obstacleSchedule[i]+this._obstacleSchedule[i+1])/2);
+        this._coinSchedule.push(mid);
+      }
+      this._obstacleScheduleIdx=0;
+      this._coinScheduleIdx=0;
+    }
     this._laserGapToggle=true;
     this._lastLaserWorldX=-9999;
     this._levelFlips=0; this._rareCoins=0;
@@ -1794,11 +1816,6 @@ class GameScene extends Phaser.Scene{
     const sx=PLAYER_X+(this.lvl.distance-this.distTraveled);
     this.finishTxt.x=sx;
     if(this.unlockedMsg.alpha>0)this.unlockedMsg.setAlpha(Math.max(0,this.unlockedMsg.alpha-0.025));
-    if(!this.safetyCoinsSpawned&&this.distTraveled>this.lvl.distance-600){
-      this.safetyCoinsSpawned=true;
-      [{wx:this.lvl.distance-340,sy:H/2},{wx:this.lvl.distance-230,sy:TUNNEL_TOP+130},{wx:this.lvl.distance-130,sy:TUNNEL_BOTTOM-130}]
-      .forEach(p=>this._placeCoin(this._w2s(p.wx),p.sy,p.wx));
-    }
     this.finishPulse=(this.finishPulse+0.08)%(Math.PI*2);
     const pulse=0.6+Math.sin(this.finishPulse)*0.4;
     const locked=this.coinsCollected<this.lvl.required;
@@ -1856,8 +1873,6 @@ class GameScene extends Phaser.Scene{
       if(this.flipCooldown<=0)this._doFlip();
     }
     const prog=clamp(this.distTraveled/this.lvl.distance,0,1);
-    // Constant speed per level — no ramping within a level
-    const isIntense=prog>0.70;
     this.speed=this.lvl.startSpeed;
     if(this._powerup?.type==='slowmo') this.speed*=0.70;
     this.distTraveled+=this.speed*dt;
@@ -2036,39 +2051,20 @@ class GameScene extends Phaser.Scene{
       if(c.x<-30)this.coins.remove(c,true,true);
     }
 
-    const clearBefore=this.lvl.distance-450;
-    if(this.distTraveled+400<clearBefore){
-      const spawnWX=this.distTraveled+(W-PLAYER_X)+100;
-      if(spawnWX>=this.nextObstacleWorldX&&this.nextObstacleWorldX<clearBefore){
-        this._spawnCluster(this.nextObstacleWorldX);
-        const sp=isIntense?Math.floor(this.lvl.spacing*0.68):this.lvl.spacing;
-        let nextGap=Math.max(350,Phaser.Math.Between(Math.floor(sp*0.75),Math.floor(sp*1.45)));
-        // After spawn: if still under minCount, cap gap so remaining obstacles fit
-        const minCount=this.lvl.minCount||0;
-        const stillNeeded=minCount-this._spawnCount;
-        if(stillNeeded>0){
-          const remaining=clearBefore-this.nextObstacleWorldX;
-          const maxGap=Math.max(210,Math.floor(remaining/(stillNeeded+0.5)));
-          nextGap=Math.min(nextGap,maxGap);
-        }
-        this.nextObstacleWorldX+=nextGap;
+    // Scheduled obstacle spawn: pre-computed evenly distributed positions (20%–85%)
+    if(this._obstacleScheduleIdx<this._obstacleSchedule.length){
+      const wx=this._obstacleSchedule[this._obstacleScheduleIdx];
+      if(this.distTraveled+(W-PLAYER_X)+100>=wx){
+        this._spawnCluster(wx);
+        this._obstacleScheduleIdx++;
       }
     }
-
-    // Finale: 3 obstacles in the last stretch for final challenge
-    if(!this._finaleSpawned&&!this.levelDone&&this.distTraveled>this.lvl.distance-800){
-      this._finaleSpawned=true;
-      const d=this.lvl.distance;
-      [d-400,d-300,d-210].forEach(wx=>{
-        const sx=this._w2s(wx);
-        if(sx>PLAYER_X+60)this._spawnCluster(wx);
-      });
-    }
-    // Zone coins: 3 coins spaced evenly across the level
-    for(let z=0;z<3;z++){
-      if(!this._zoneCoinPlaced[z]&&this._w2s(this._zoneCoinWXs[z])<=W+60){
-        this._zoneCoinPlaced[z]=true;
-        this._placeZoneCoin(this._zoneCoinWXs[z]);
+    // Scheduled coin: midpoint between consecutive obstacles
+    if(this._coinScheduleIdx<this._coinSchedule.length){
+      const cwx=this._coinSchedule[this._coinScheduleIdx];
+      if(this._w2s(cwx)<=W+80){
+        this._placeZoneCoin(cwx);
+        this._coinScheduleIdx++;
       }
     }
     // Lava fireballs
